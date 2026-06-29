@@ -32,6 +32,15 @@ def build_parser() -> argparse.ArgumentParser:
     serve_api_parser.add_argument("--host", help="Override AGENTFORGE_HOST")
     serve_api_parser.add_argument("--port", type=int, help="Override AGENTFORGE_PORT")
 
+    adk_parser = subparsers.add_parser(
+        "adk-demo",
+        help="Run the Google ADK integration demo workflow",
+    )
+    adk_parser.add_argument(
+        "description",
+        help="Natural-language project description for the ADK demo",
+    )
+
     return parser
 
 
@@ -141,6 +150,16 @@ def run_server_api(host: str | None = None, port: int | None = None) -> None:
     uvicorn.run(app, host=settings.host, port=settings.port, log_level=settings.log_level.lower())
 
 
+def run_adk_demo(description: str) -> str:
+    """Run the Google ADK integration demo workflow and return formatted output."""
+    from agentforge.adk.adk_demo_workflow import ADKDemoWorkflow
+
+    platform = AgentForgePlatform.create_default(settings=load_settings())
+    workflow = ADKDemoWorkflow(platform=platform)
+    result = workflow.run(description)
+    return "\n".join(result.summary_lines())
+
+
 def main() -> None:
     """CLI entry point."""
     parser = build_parser()
@@ -160,6 +179,9 @@ def main() -> None:
         return
     if args.command == "serve-api":
         run_server_api(host=args.host, port=args.port)
+        return
+    if args.command == "adk-demo":
+        print(run_adk_demo(args.description))
         return
 
 

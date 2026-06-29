@@ -21,6 +21,11 @@ api = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
 ]
+adk = [
+    # Install with: pip install google-adk
+    # The agentforge.adk package runs without this dependency using a local stub.
+    "google-adk>=0.1.0",
+]
 
 [project.scripts]
 agentforge = "agentforge.interfaces.cli.main:main"
