@@ -1,0 +1,51 @@
+# Dependencies & Environments
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.local
+.env.*.local
+
+# Python cache & build outputs
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+
+# Platform specific generated outputs
+generated_projects/
+.agentforge/
+
+# IDEs, Editors & OS Files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Diagnostic Logs & caches
+*.log
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Frontend dependencies & production build outputs
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/

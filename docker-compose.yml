@@ -1,0 +1,10 @@
+services:
+  agentforge:
+    build: .
+    environment:
+      AGENTFORGE_ENV: local
+      AGENTFORGE_HOST: 0.0.0.0
+      AGENTFORGE_PORT: 8080
+      AGENTFORGE_LOG_LEVEL: INFO
+    ports:
+      - "8080:8080"

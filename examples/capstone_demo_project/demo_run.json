@@ -1,0 +1,46 @@
+{
+  "error": null,
+  "events": [
+    {
+      "event_type": "workflow.started",
+      "message": "Workflow execution started.",
+      "node_id": null
+    },
+    {
+      "event_type": "node.started",
+      "message": "Workflow node execution started.",
+      "node_id": "plan"
+    },
+    {
+      "event_type": "security.allow",
+      "message": "Task passed security policy.",
+      "node_id": "plan"
+    },
+    {
+      "event_type": "node.agent_result",
+      "message": "Generated initial deterministic project plan.",
+      "node_id": "plan"
+    },
+    {
+      "event_type": "evaluation.passed",
+      "message": "Evaluation score=0.95; report=76e9882d-45f4-4375-b642-0baf36ac2271",
+      "node_id": "plan"
+    },
+    {
+      "event_type": "node.completed",
+      "message": "Workflow node completed successfully.",
+      "node_id": "plan"
+    },
+    {
+      "event_type": "workflow.completed",
+      "message": "Workflow execution completed.",
+      "node_id": null
+    }
+  ],
+  "executed_node_ids": [
+    "plan"
+  ],
+  "pending_approval_node_id": null,
+  "status": "completed",
+  "workflow_id": "dc2acdd4-6145-465b-ad09-19055f7f288f"
+}
