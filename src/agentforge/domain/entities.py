@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from agentforge.domain.value_objects import Capability, RiskLevel
+
+if TYPE_CHECKING:
+    from agentforge.domain_analysis.domain_context import DomainContext
 
 
 class TaskStatus(StrEnum):
@@ -38,6 +42,7 @@ class ProjectTask:
     required_capabilities: tuple[Capability, ...]
     description: str = ""
     risk_level: RiskLevel = RiskLevel.LOW
+    domain_context: DomainContext | None = None
     task_id: str = field(default_factory=lambda: str(uuid4()))
     status: TaskStatus = TaskStatus.PENDING
 

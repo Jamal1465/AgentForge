@@ -1,8 +1,13 @@
-"""Agent plugins for generating professional-grade project planning artifacts."""
+"""Agent plugins for generating professional-grade project planning artifacts.
+
+These agents are domain-context-aware. They read from task.domain_context
+and generate highly tailored documents specific to the requested domain.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from agentforge.domain.entities import Artifact, ProjectTask
 from agentforge.domain.value_objects import Capability, RiskLevel
@@ -11,6 +16,9 @@ from agentforge.runtime.plugins.contracts import (
     AgentMetadata,
     AgentResult,
 )
+
+if TYPE_CHECKING:
+    from agentforge.domain_analysis.domain_context import DomainContext
 
 
 def get_metadata_header(project_name: str, doc_title: str) -> str:
@@ -25,6 +33,15 @@ Version: 1.0.0
 Status: Approved
 Last Updated: {now_str}
 ---"""
+
+
+def get_resolved_context(task: ProjectTask) -> DomainContext:
+    """Retrieve the domain context, falling back to the analyzer if missing."""
+    if task.domain_context is not None:
+        return task.domain_context
+
+    from agentforge.domain_analysis.domain_analyzer import DomainAnalyzer
+    return DomainAnalyzer().analyze(task.description)
 
 
 class BriefAgentPlugin:
@@ -42,14 +59,24 @@ class BriefAgentPlugin:
         )
 
     def execute(self, task: ProjectTask) -> AgentResult:
-        meta = get_metadata_header(task.description, "01_Project_Brief")
+        ctx = get_resolved_context(task)
+        meta = get_metadata_header(ctx.project_name, "01_Project_Brief")
+
+        # Bullet lists for lists
+        actors_bullet = "\n".join(f"- **{actor}**: Interacts with the system in a designated role." for actor in ctx.actors)
+        out_of_scope_bullet = "\n".join(f"- {item}" for item in ctx.out_of_scope)
+        modules_bullet = "\n".join(f"- **{mod}**: Handles workflows in this subsystem." for mod in ctx.modules)
+
         content = f"""# Project Brief
 
 {meta}
 
 ## 1. Executive Summary
 This document serves as the official project brief for the software project:
-"{task.description}".
+"{ctx.project_name}".
+
+{ctx.domain_summary}
+
 The goal of this initiative is to plan and construct a robust system that fulfills
 all core functionalities while adhering to modern architectural practices. By using
 capability-driven design, we isolate responsibilities and establish a baseline for
@@ -57,7 +84,7 @@ reliable service delivery.
 
 ## 2. Project Vision
 The vision is to deliver a production-ready application tailored to:
-"{task.description}".
+"{ctx.project_name}".
 It will act as a reference implementation of a high-quality service, featuring clean
 separation of concerns, secure access control, and highly maintainable components.
 The system will run reliably in containerized environments and support straightforward
@@ -66,7 +93,7 @@ monitoring and debugging.
 ## 3. Problem Statement
 Many current software implementations suffer from tight coupling, lack of unit test
 coverage, and incomplete deployment configurations. This makes maintaining and scaling the
-application complex and error-prone. The implementation of "{task.description}" solves
+application complex and error-prone. The implementation of "{ctx.project_name}" solves
 these issues by enforcing a structured architecture from the outset, backed by relational
 durability and containerization.
 
@@ -77,9 +104,7 @@ durability and containerization.
 - Provide persistent storage with transactional safety.
 
 ## 5. Target Users
-- **System Administrators**: Responsible for deployment, monitoring, and scaling.
-- **Application Developers**: Tasked with extending and maintaining the codebase.
-- **End Users**: Accessing the API endpoints for task management and authentication.
+{actors_bullet}
 
 ## 6. Assumptions and Constraints
 - **Assumptions**: The system will run on a Unix-like host or Docker container.
@@ -92,16 +117,10 @@ durability and containerization.
 - Container infrastructure provisioning.
 
 ## 8. Out-of-Scope Items
-- Mobile client application development.
-- Third-party payment gateway integration.
-- Custom machine learning analytics engines.
-- Multi-region database clustering.
+{out_of_scope_bullet}
 
 ## 9. High-Level Modules
-- **Authentication**: JWT validation, security policies, and user registration.
-- **Core Domain Manager**: Creation, retrieval, update, and deletion workflows.
-- **Persistence Layer**: DB connections, migrations, and model definitions.
-- **Infrastructure Setup**: Docker configuration and deployment playbooks.
+{modules_bullet}
 
 ## 10. Success Criteria
 - Execution of all test suites completes without warnings or errors.
@@ -111,7 +130,7 @@ durability and containerization.
 """
         return AgentResult(
             status=AgentExecutionStatus.SUCCESS,
-            summary="Generated project brief artifact.",
+            summary=f"Generated project brief artifact for {ctx.project_name}.",
             artifacts=(Artifact(name="01_Project_Brief.md", content=content),),
             confidence=0.9,
         )
@@ -135,262 +154,189 @@ class RequirementsAgentPlugin:
         )
 
     def execute(self, task: ProjectTask) -> AgentResult:
+        ctx = get_resolved_context(task)
         caps = {c.name for c in task.required_capabilities}
+
         if "requirements-analysis" in caps:
             name = "02_Functional_Requirements.md"
-            meta = get_metadata_header(task.description, "02_Functional_Requirements")
+            meta = get_metadata_header(ctx.project_name, "02_Functional_Requirements")
+
+            # Dynamic API endpoint rendering
+            api_lines = []
+            for api in ctx.api_resources:
+                if "auth" in api or "token" in api:
+                    method = "POST"
+                    desc = "Authenticate or request login token"
+                    auth = "No"
+                elif "register" in api:
+                    method = "POST"
+                    desc = "Register a new user account"
+                    auth = "No"
+                elif "catalog" in api or "search" in api:
+                    method = "GET"
+                    desc = "Browse and search catalog"
+                    auth = "No/Yes"
+                else:
+                    method = "POST/GET/PUT"
+                    desc = f"Manage {api.split('/')[-1]} resources"
+                    auth = "Yes"
+                api_lines.append(f"| {method} | `{api}` | {desc} | {auth} |")
+            api_table = "\n".join(api_lines)
+
+            # Bullet points for business, validation and edge cases
+            actors_bullet = "\n".join(f"- **{actor}**: Has designated access level." for actor in ctx.actors)
+            entities_bullet = "\n".join(f"- **{entity}**: Core system entity." for entity in ctx.entities)
+            br_bullet = "\n".join(f"- **BR-{i+1:03d}**: {rule}" for i, rule in enumerate(ctx.business_rules))
+            val_bullet = "\n".join(f"- {rule}" for rule in ctx.validation_rules)
+            ec_bullet = "\n".join(f"- {case}" for case in ctx.edge_cases)
+
+            # Requirements dynamic specs
+            req_specs_lines = []
+            for req in ctx.functional_requirements:
+                parts = req.split(" ", 1)
+                req_id = parts[0]
+                req_title = parts[1] if len(parts) > 1 else req
+                req_specs_lines.append(f"""### {req_id}: {req_title}
+- **Description**: The system must support the {req_title.lower()} capability within the domain.
+- **Priority**: High
+- **Acceptance Criteria**:
+  - Valid input results in successful execution and updates.
+  - Invalid parameters return appropriate validation warnings and errors.""")
+            req_specs_str = "\n\n".join(req_specs_lines)
+
             content = f"""# Functional Requirements
 
 {meta}
 
 ## 1. Document Purpose
 This document specifies the complete functional requirements for the software system:
-"{task.description}".
+"{ctx.project_name}".
 It establishes the baseline for development, testing, and eventual system acceptance.
+This specification serves as the single source of truth for the project team, stakeholders, and quality assurance personnel. It describes both the high-level business capabilities and the low-level logic requirements necessary to develop, verify, and maintain the system. Developers must ensure that all functional criteria listed below are verified through automated unit and integration tests.
 
 ## 2. System Overview
-The system provides a capability-driven backend service implementing core task and user
-management workflows. Key capabilities include secure OAuth2 token issuance, relational
-persistence, task manipulation, validation, and containerization.
+The system provides a capability-driven backend service implementing core {ctx.project_name}
+workflows. Key capabilities include secure role-based access, relational persistence,
+domain entity operations, and validation.
+The application utilizes a clean architecture to separate the business logic from infrastructure concerns. By decoupling the interface handlers, domain models, and storage adaptors, the system is prepared to adapt to changing deployment requirements. Below are the details regarding actors, endpoint routes, validations, business constraints, and their corresponding traceability metrics.
+
+### Core Entities
+The primary domain entities managed by the system are:
+{entities_bullet}
 
 ## 3. Actors and Users
-- **Anonymous User**: Can register a new account and request OAuth2 login tokens.
-- **Authenticated User**: Can manage their own tasks and retrieve their profile information.
-- **Administrator**: Can perform global operations, including removing orphaned resources.
+A clear definition of actors establishes the user boundary of the system. This allows the security layer to enforce fine-grained access controls based on roles. Each actor has specific responsibilities and is restricted to the authorized resources defined in the matrix.
+{actors_bullet}
 
 ## 4. Authorization Matrix
 The following matrix defines resource access permissions:
+The matrix below outlines the authorization rules applied to each endpoint. Access attempts by users lacking the required role will be rejected with an HTTP 403 Forbidden response. All authorization logic is enforced at the controller entrypoint using interceptors or middleware.
 
-| Role | User Register | Token Exchange | Create Task | View Own Tasks | View All Tasks |
-|------|---------------|----------------|-------------|----------------|----------------|
-| Anon | Yes           | Yes            | No          | No             | No             |
-| User | No            | No             | Yes         | Yes            | No             |
-| Admin| No            | No             | Yes         | Yes            | Yes            |
+{ctx.authorization_matrix}
 
 ## 5. API Endpoint Specifications
 The backend service exposes the following endpoints:
+All HTTP endpoints conform to RESTful design patterns. Response payloads use standardized JSON structures. Error responses follow RFC 7807 problem details to provide debugging traces. The server enforces TLS 1.3 encryption on all external network interfaces.
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/api/v1/auth/register` | Register a new user account | No |
-| POST | `/api/v1/auth/token` | Exchange credentials for JWT token | No |
-| GET | `/api/v1/users/me` | Retrieve current user profile | Yes |
-| POST | `/api/v1/tasks` | Create a new task entity | Yes |
-| GET | `/api/v1/tasks` | List and filter user tasks | Yes |
-| PUT | `/api/v1/tasks/{{id}}` | Update a task details/status | Yes |
-| DELETE | `/api/v1/tasks/{{id}}` | Remove a task entity | Yes |
+{api_table}
 
 ## 6. Request and Response Examples
+These integration contract examples illustrate the expected request body structures and their successful response schemas. Mock data representations in these schemas help client developers construct requests correctly. Any deviation in data types or missing fields will trigger Pydantic schema validation failures with HTTP 422 Unprocessable Entity.
 
-### User Registration (POST `/api/v1/auth/register`)
-- **Request Payload**:
-```json
-{{
-  "username": "johndoe",
-  "email": "john@example.com",
-  "password": "SuperSecurePassword123!"
-}}
-```
-- **Response Payload (HTTP 201 Created)**:
-```json
-{{
-  "id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-  "username": "johndoe",
-  "email": "john@example.com",
-  "created_at": "2026-06-30T00:00:00Z"
-}}
-```
-
-### Create Task (POST `/api/v1/tasks`)
-- **Request Payload**:
-```json
-{{
-  "title": "Complete Project Architecture",
-  "description": "Formulate and document system architectural diagrams.",
-  "priority": "high"
-}}
-```
-- **Response Payload (HTTP 201 Created)**:
-```json
-{{
-  "id": "b1b2b3b4-c5c6-d7d8-e9e0-f1f2f3f4f5f6",
-  "title": "Complete Project Architecture",
-  "description": "Formulate and document system architectural diagrams.",
-  "priority": "high",
-  "status": "pending",
-  "due_date": null,
-  "created_at": "2026-06-30T00:05:00Z"
-}}
-```
+{ctx.request_response_examples}
 
 ## 7. Business and Validation Rules
+Business rules define the strict invariant conditions that must remain true at all times in the system. They represent the core business logic. Validation rules, on the other hand, prevent corrupt or invalid data formats from entering the relational database.
 
 ### Business Rules
-- **BR-001**: Task Ownership. Users can only read, write, update, or delete tasks associated
-  with their authenticated user ID. Attempting to modify tasks of others returns HTTP 403.
-- **BR-002**: Token Validity. Access tokens must expire after 30 minutes, necessitating exchange.
+{br_bullet}
 
 ### Validation Rules per Entity
-- **User Validation**:
-  - `username` must be alphanumeric, containing 3 to 50 characters.
-  - `email` must match standard RFC 5322 format.
-  - `password` must contain at least 8 characters, including a digit and a special symbol.
-- **Task Validation**:
-  - `title` is required, with length between 1 and 100 characters.
-  - `priority` must match one of: `low`, `medium`, `high`.
-  - `status` must match one of: `pending`, `in_progress`, `completed`.
+{val_bullet}
 
 ## 8. Edge Cases and Mitigations
-- **EC-001**: Concurrent Database Modifications.
-  - *Mitigation*: Employ optimistic concurrency control using version flags.
-- **EC-002**: Database Connection Drop.
-  - *Mitigation*: Implement resilient SQL connection retries with exponential backoff.
+Operating in distributed environments introduces concurrency risks, network interruptions, and resource exhaustion. This section outlines key scenarios where standard system paths might fail and specifies the recovery or fallback mitigations implemented in the codebase.
+{ec_bullet}
 
 ## 9. Requirement Specifications
+Each functional requirement is decomposed into description, priority, and clear acceptance criteria. These criteria form the basis for unit and integration test assertions. Developers must verify every acceptance check in the test suites.
 
-### FR-001: User Account Registration
-- **Description**: The system must allow users to register an account with a unique username,
-  email address, and strong password.
-- **Priority**: High
-- **Acceptance Criteria**:
-  - Registration fails if username or email already exists.
-  - Hashing of passwords must use secure bcrypt algorithm.
-  - Return HTTP 201 Created on successful registration.
-
-### FR-002: User Authentication & Token Generation
-- **Description**: Users must be able to exchange username and password for a JWT token.
-- **Priority**: High
-- **Acceptance Criteria**:
-  - Accept valid credentials and return a signed JSON Web Token (JWT).
-  - Return HTTP 401 Unauthorized for incorrect passwords or missing accounts.
-  - JWT must include standard expiration time of 30 minutes.
-
-### FR-003: Task Creation (CRUD)
-- **Description**: Authenticated users must be able to create new tasks with title,
-  description, priority level, and due date.
-- **Priority**: High
-- **Acceptance Criteria**:
-  - Title field is mandatory and must not be empty.
-  - Return HTTP 201 Created with the serialized task object.
-  - Associate task with the authenticated user ID.
-
-### FR-004: Task Retrieval & List Filtering
-- **Description**: Users must be able to list their tasks, filtering by status, priority,
-  and due date.
-- **Priority**: Medium
-- **Acceptance Criteria**:
-  - List only returns tasks belonging to the authenticated user.
-  - Allow sorting by due date in ascending/descending order.
-  - Return HTTP 200 OK with the array of tasks.
-
-### FR-005: Task Modification
-- **Description**: Users must be able to update properties of an existing task.
-- **Priority**: High
-- **Acceptance Criteria**:
-  - Reject updates to tasks owned by other users with HTTP 403 Forbidden.
-  - Allow marking task as completed, which records a completed timestamp.
-  - Return HTTP 200 OK with the updated task.
-
-### FR-006: Task Deletion
-- **Description**: Users must be able to delete a task.
-- **Priority**: High
-- **Acceptance Criteria**:
-  - Restrict deletion to the owner of the task.
-  - Return HTTP 204 No Content upon successful deletion.
-
-### FR-007: User Profile Retrieve
-- **Description**: Authenticated users must be able to retrieve their profile information.
-- **Priority**: Low
-- **Acceptance Criteria**:
-  - Exclude the password hash from the serialized JSON payload.
-  - Return HTTP 200 OK.
+{req_specs_str}
 
 ## 10. Traceability Matrix
+The traceability matrix maps each requirement to its corresponding test case ID. This ensures complete verification coverage and verifies that no critical function is left untested. The CI pipeline runs this suite on every repository change.
 
-| Req ID | Capability / Module | Test Case ID | Target Release |
-|--------|---------------------|--------------|----------------|
-| FR-001 | User Registration   | TC-AUTH-001  | v1.0.0         |
-| FR-002 | OAuth2 Login        | TC-AUTH-002  | v1.0.0         |
-| FR-003 | Task CRUD           | TC-TASK-001  | v1.0.0         |
-| FR-004 | Task Filtering      | TC-TASK-002  | v1.0.0         |
-| FR-005 | Task Update         | TC-TASK-003  | v1.0.0         |
-| FR-006 | Task Delete         | TC-TASK-004  | v1.0.0         |
-| FR-007 | Profile Fetch       | TC-AUTH-003  | v1.0.0         |
+{ctx.traceability_matrix}
 """
         else:
             name = "03_Non_Functional_Requirements.md"
-            meta = get_metadata_header(task.description, "03_Non_Functional_Requirements")
+            meta = get_metadata_header(ctx.project_name, "03_Non_Functional_Requirements")
+
+            # Domain-relevant NFR rendering
+            nfrs = []
+            if ctx.normalized_domain == "library-management":
+                nfrs = [
+                    ("NFR-001: Catalog Search Latency", "Performance", "p95 catalog search response time < 300ms", "p95 catalog search response time > 1000ms", "Locust load tests"),
+                    ("NFR-002: Loan Transaction Atomicity", "Reliability", "100% of loans and returns are ACID transactions", "Any concurrent transaction conflict leading to duplicate issues", "Unit tests and concurrent DB trials"),
+                    ("NFR-003: Role-based Access Enforcement", "Security", "Strict RBAC verification matching the authorized matrix", "Any access bypass or privilege escalation", "API security test suite"),
+                    ("NFR-004: Auditability of Issue/Return Transactions", "Audit", "All circulation actions are written to persistent audit logs", "Missing or tamperable circulation history log entries", "Audit log persistence tests"),
+                    ("NFR-005: High Availability", "Availability", "99.9% uptime during standard institutional hours (8 AM to 10 PM)", "Uptime below 99.0% during standard hours", "Uptime ping monitoring"),
+                    ("NFR-006: Data Integrity for Book Copy Inventory", "Data Integrity", "No book copy is marked as borrowed and available simultaneously", "Any copy status state mismatch", "Entity validation suite"),
+                ]
+            elif ctx.normalized_domain == "ecommerce":
+                nfrs = [
+                    ("NFR-001: Cart & Checkout Latency", "Performance", "p95 checkout completion latency < 200ms", "p95 checkout completion latency > 800ms", "Locust load tests"),
+                    ("NFR-002: Payment Transaction Security", "Security", "PCI-DSS compliance with HTTPS TLS 1.3 only", "Use of deprecated SSL/TLS protocols", "Security vulnerability scan"),
+                    ("NFR-003: High Availability", "Availability", "99.99% system uptime for continuous shopping", "Uptime below 99.9%", "Uptime ping monitoring"),
+                    ("NFR-004: Concurrency Safety", "Reliability", "Prevent stock overselling under high concurrency cart checkout", "Overselling or cart stock leaks", "Load testing with shared stock"),
+                ]
+            elif ctx.normalized_domain == "hospital-management":
+                nfrs = [
+                    ("NFR-001: Medical Record Security", "Security", "EHR data encryption at rest and in transit (HIPAA compliant)", "Unencrypted storage or transmission of patient health data", "Encryption audit"),
+                    ("NFR-002: Prescription Modification Audit", "Audit", "Changes to prescriptions require digital staff signatures", "Unsigned prescription additions or updates", "Audit log check"),
+                    ("NFR-003: Uptime and Reliability", "Availability", "99.99% uptime for life-critical medical record retrieval", "Uptime below 99.9%", "Reliability testing"),
+                ]
+            else:
+                nfrs = [
+                    ("NFR-001: API Response Latency", "Performance", "p95 response time < 200ms under normal load", "p95 response time > 500ms under any load conditions", "Locust load tests"),
+                    ("NFR-002: Transport Layer Security (TLS)", "Security", "100% of external traffic using TLS 1.3 protocol", "Support of SSLv3, TLS 1.0, or TLS 1.1 protocol", "SSL certificate validation scan"),
+                    ("NFR-003: Password Hashing Integrity", "Security", "Passwords hashed using bcrypt with work factor of 12", "Hash functions with work factor less than 10 or using MD5/SHA1", "CI code analysis checks"),
+                    ("NFR-004: System Uptime", "Availability", "Monthly uptime of 99.9% or higher", "Monthly uptime below 99.0%", "Uptime ping probes"),
+                ]
+
+            nfr_specs = []
+            nfr_matrix_lines = []
+            for nfr_id_title, cat, success_threshold, failure_threshold, method in nfrs:
+                nfr_id = nfr_id_title.split(":")[0]
+                nfr_specs.append(f"""### {nfr_id_title}
+- **Category**: {cat}
+- **Priority**: High
+- **Success Threshold**: {success_threshold}
+- **Failure Threshold**: {failure_threshold}
+- **Verification Environment**: Staging Environment
+- **Verification Method**: {method}
+- **Monitoring Signal**: Active Prometheus alert metric logs""")
+                nfr_matrix_lines.append(f"| {nfr_id} | {cat} | High | {success_threshold[:25]}... | Staging | {method[:25]}... |")
+            nfr_specs_str = "\n\n".join(nfr_specs)
+            nfr_matrix_str = "\n".join(nfr_matrix_lines)
+
             content = f"""# Non-Functional Requirements
 
 {meta}
 
 ## 1. Measurable NFR Specifications
 
-### NFR-001: API Performance & Response Latency
-- **Category**: Performance
-- **Priority**: High
-- **Success Threshold**: p95 response time < 200ms under normal load conditions.
-- **Failure Threshold**: p95 response time > 500ms under any load conditions.
-- **Verification Environment**: Staging Environment
-- **Verification Method**: Execute automated load tests using Locust with 100 concurrent users.
-- **Monitoring Signal**: Prometheus metric `http_request_duration_seconds` histogram bucket.
-
-### NFR-002: Transport Layer Security (TLS)
-- **Category**: Security
-- **Priority**: High
-- **Success Threshold**: 100% of external traffic using TLS 1.3 protocol.
-- **Failure Threshold**: Support of SSLv3, TLS 1.0, or TLS 1.1 protocol.
-- **Verification Environment**: Staging & Production Environments
-- **Verification Method**: Validate server SSL certificates using automated scanning tools.
-- **Monitoring Signal**: Traefik ingress logs detailing protocol version per TLS handshake.
-
-### NFR-003: Password Hashing Integrity
-- **Category**: Security
-- **Priority**: High
-- **Success Threshold**: Passwords must be hashed using bcrypt with a work factor of 12.
-- **Failure Threshold**: Hash functions with work factor less than 10 or using MD5/SHA1 algorithms.
-- **Verification Environment**: Development & CI Environments
-- **Verification Method**: Static code analysis and unit tests verifying the hashing configuration.
-- **Monitoring Signal**: CI code audit logs and test suite summaries.
-
-### NFR-004: System Availability & Uptime
-- **Category**: Reliability
-- **Priority**: High
-- **Success Threshold**: Monthly uptime of 99.9% or higher.
-- **Failure Threshold**: Monthly uptime below 99.0%.
-- **Verification Environment**: Production Environment
-- **Verification Method**: Monitor availability using continuous HTTP pinging probes.
-- **Monitoring Signal**: Grafana availability panel based on ping probes.
-
-### NFR-005: Horizontal Scalability
-- **Category**: Scalability
-- **Priority**: Medium
-- **Success Threshold**: Scale seamlessly from 2 to 10 container replicas.
-- **Failure Threshold**: Container CPU throttling or memory starvation leading to restart.
-- **Verification Environment**: Staging Environment
-- **Verification Method**: Deploy 3 concurrent Docker replicas behind a round-robin load balancer.
-- **Monitoring Signal**: Kubernetes replica set count and pod status indicators.
-
-### NFR-006: Maintainability & Code Quality
-- **Category**: Maintainability
-- **Priority**: High
-- **Success Threshold**: Zero errors detected by Ruff and MyPy tools.
-- **Failure Threshold**: Codebase containing syntax warnings or ignored lint issues.
-- **Verification Environment**: Continuous Integration Pipeline
-- **Verification Method**: Run Ruff style checks and mypy type checks.
-- **Monitoring Signal**: GitHub Actions build outcome indicator.
+{nfr_specs_str}
 
 ## 2. NFR Verification Matrix
 
 | NFR ID | Category | Priority | Success Threshold | Verification Env | Verification Method |
 |--------|----------|----------|-------------------|------------------|---------------------|
-| NFR-001| Perf     | High     | p95 < 200ms       | Staging          | Locust Load Tests   |
-| NFR-002| Security | High     | TLS 1.3 only      | Production       | SSL Scan            |
-| NFR-003| Security | High     | bcrypt (WF=12)    | Dev/CI           | Code Audit          |
-| NFR-004| Quality  | High     | 99.9% Uptime      | Production       | Ping Probes         |
-| NFR-005| Scale    | Medium   | Stateless App     | Staging          | Load Balancer Test  |
-| NFR-006| Maintain | High     | 0 Ruff/MyPy errors| CI               | Ruff check .        |
+{nfr_matrix_str}
 """
+
         return AgentResult(
             status=AgentExecutionStatus.SUCCESS,
             summary=f"Generated requirements artifact: {name}.",
@@ -418,92 +364,108 @@ class ArchitectureAgentPlugin:
         )
 
     def execute(self, task: ProjectTask) -> AgentResult:
+        ctx = get_resolved_context(task)
         caps = {c.name for c in task.required_capabilities}
+
         if "feasibility-analysis" in caps:
             name = "04_Feasibility_Study.md"
-            meta = get_metadata_header(task.description, "04_Feasibility_Study")
+            meta = get_metadata_header(ctx.project_name, "04_Feasibility_Study")
+
+            # Feasibility justifications
+            if ctx.normalized_domain == "library-management":
+                tech_details = "Feasible cataloging indexing and transaction controls. Fast lookup on ISBN indexes."
+                oper_details = "Operational simplicity for students and librarians with automatic Swagger API documentation."
+                econ_details = "Zero license cost with open-source tools, fits university VPS hosting budget."
+                legal_details = "Standard privacy laws apply. Encrypted database fields keep member data secure."
+            elif ctx.normalized_domain == "hospital-management":
+                tech_details = "Requires secure EMR encryption and HIPAA compliance. Feasible using standard PostgreSQL crypto extensions."
+                oper_details = "Operational workflow designed for clinical staff, nurses, and doctors. Fits clinic schedules."
+                econ_details = "Low hardware footprint for local deployment, fits healthcare provider operational expenses."
+                legal_details = "Subject to strict HIPAA regulations. Access audit trail logging satisfies requirements."
+            else:
+                tech_details = "FastAPI and PostgreSQL provide a modern stack with vast documentation and high technical feasibility."
+                oper_details = "Lightweight design with Swagger docs simplifies operations and client integration."
+                econ_details = "Open-source codebase minimizes upfront licensing fees."
+                legal_details = "Standard software licenses. Standard security practices cover data compliance."
+
             content = f"""# Feasibility Study
 
 {meta}
 
 ## 1. Technical Feasibility
 The technical feasibility evaluates whether the system can be built with existing technologies.
-- **FastAPI**: A high-performance Python framework utilizing ASGI for asynchronous requests. It
-  supports type safety and Pydantic validation out of the box, reducing boilerplate code.
-- **PostgreSQL**: A reliable, ACID-compliant relational database. It integrates seamlessly
-  with SQLAlchemy for ORM management and Alembic for migrations.
-- **Docker**: Provides standardized packaging. Containerization ensures that deployment is
-  reproducible across local, staging, and production servers.
-The required libraries and infrastructure components are mature, widely documented, and
-actively maintained, making the project highly technically feasible.
+- **FastAPI**: A high-performance Python framework utilizing ASGI for asynchronous requests.
+- **PostgreSQL**: A reliable, ACID-compliant relational database.
+- **Feasibility Note**: {tech_details}
 
 ## 2. Operational Feasibility
 Operational feasibility assesses whether the project will be used effectively.
 - **Documentation**: Automatic OpenAPI / Swagger docs are generated by FastAPI on `/docs`.
-  This simplifies integration for frontend teams and external users.
-- **Administration**: PostgreSQL databases are easy to manage using PgAdmin or CLI tools.
-- **Deployability**: Simple startup commands (`docker-compose up`) mean operational training
-  for deployments is minimal.
+- **Feasibility Note**: {oper_details}
 
 ## 3. Economic Feasibility
 Economic feasibility analyses cost vs. benefit.
-- **Software Costs**: All selected technologies (Python, FastAPI, PostgreSQL, Docker) are
-  open-source and free to use without licensing fees.
-- **Hosting Costs**: The stateless backend application requires minimal hosting resources, and
-  can easily run on a low-cost VPS instance.
-- **Development Costs**: Python's high readability and rich library ecosystem accelerate
-  development speed, reducing overall time-to-market.
+- **Software Costs**: All selected technologies (Python, FastAPI, PostgreSQL, Docker) are open-source.
+- **Feasibility Note**: {econ_details}
 
 ## 4. Schedule Feasibility
-Schedule feasibility evaluates the timeline.
-- **Phase 1 (Setup)**: 1 week for repository and environment initialization.
-- **Phase 2 (Auth)**: 1 week for user security and JWT integration.
-- **Phase 3 (CRUD)**: 1 week for task logic and database schema design.
-- **Phase 4 (Deploy)**: 1 week for container configuration, testing, and release.
-Total duration is 4 weeks, which fits standard development cycles.
+Schedule feasibility evaluates the timeline based on core modules.
+The project requires building modules: {", ".join(ctx.modules)}.
+Estimated duration is 4-6 weeks, which fits standard development cycles.
 
 ## 5. Feasibility Scoring Table
 Below is the evaluation scoring across key parameters:
 
 | Dimension | Score | Weight | Weighted Score | Rationale |
 |-----------|-------|--------|----------------|-----------|
-| Tech      | 9.0   | 25%    | 2.25     | Mature toolset |
-| Opera     | 8.5   | 20%    | 1.70     | Swagger & docs |
-| Econ      | 9.5   | 15%    | 1.425    | Open-source stack |
-| Sched     | 8.0   | 15%    | 1.20     | 4-week scope |
-| Legal/Sec | 9.0   | 15%    | 1.35     | Standard licenses |
-| Resource  | 8.5   | 10%    | 0.85     | 1 developer |
-| **Total** | **8.775** | **100%** | **GO** | Highly Feasible |
+| Tech      | 9.0   | 25%    | 2.25           | Mature toolset |
+| Opera     | 8.5   | 20%    | 1.70           | Swagger & docs |
+| Econ      | 9.5   | 15%    | 1.425          | Open-source stack |
+| Sched     | 8.0   | 15%    | 1.20           | Reasonable scope |
+| Legal/Sec | 9.0   | 15%    | 1.35           | Standard practices |
+| Resource  | 8.5   | 10%    | 0.85           | 1 developer |
+| **Total** | **8.775** | **100%** | **GO**   | Highly Feasible |
 
 ## 6. Legal & Security Feasibility
 - **Licensing**: Open-source licenses (MIT, BSD, Apache 2.0) are respected.
-- **Compliance**: User data encryption at rest and hashing in transit protect personal data.
-- **Vulnerabilities**: Addressed by regular library dependency scans.
+- **Security Compliance**: {legal_details}
 
 ## 7. Resource Feasibility
-- **Personnel**: Requires one software developer with intermediate knowledge of Python.
-- **Infrastructure**: Standard laptop for development and a single virtual server for deployment.
+- **Personnel**: Requires one software developer with knowledge of Python and relational databases.
+- **Infrastructure**: Standard VPS instance for staging/deployment.
 
 ## 8. Risks and Mitigations
 - **Risk**: Database connection failures during high traffic periods.
   - *Mitigation*: Introduce connection pooling and retry logic in SQLAlchemy.
-- **Risk**: Unauthorized token manipulation.
-  - *Mitigation*: Sign JWT tokens using a strong HMAC SHA-256 algorithm with rotating keys.
 
 ## 9. Final Go/No-Go Recommendation
 Based on the feasibility scoring of 8.775 / 10, the technical maturity, and zero cost barriers,
-the recommendation is a clear **GO**. Proceed to build the system architecture.
+the recommendation is a clear **GO**.
 """
         elif "architecture-documentation" in caps:
             name = "05_System_Architecture.md"
-            meta = get_metadata_header(task.description, "05_System_Architecture")
+            meta = get_metadata_header(ctx.project_name, "05_System_Architecture")
+
+            # Dynamic component services
+            services_lines = []
+            for mod in ctx.modules[:8]:
+                service_name = mod.replace(" Management", "").replace(" and Role", "").strip()
+                services_lines.append(f"    API -->|delegates to| {service_name}Service[{service_name} Service]")
+            services_str = "\n".join(services_lines)
+
+            # Dynamic SQL DDL generation
+            ddl_lines = []
+            for table in ctx.database_tables:
+                ddl_lines.append(get_table_ddl(table))
+            ddl_str = "\n\n".join(ddl_lines)
+
             content = f"""# System Architecture
 
 {meta}
 
 ## 1. Architectural Overview
 This document describes the high-level system architecture of:
-"{task.description}".
+"{ctx.project_name}".
 The system is built on a clean, tiered design pattern to isolate routing, business logic,
 and data persistence. High-throughput ASGI processing handles concurrent connections.
 
@@ -511,13 +473,13 @@ and data persistence. High-throughput ASGI processing handles concurrent connect
 The application is structured into the following layers:
 - **Presentation Layer (API)**: Exposes endpoints, handles HTTP requests, and validates schemas.
 - **Service Layer (Business Logic)**: Coordinates tasks, manages logic, and enforces rules.
-- **Data Access Layer (Repository)**: Communicates with PostgreSQL using SQLAlchemy.
+- **Data Access Layer (Repository)**: Communicates with database using SQLAlchemy.
 - **Infrastructure Layer**: Manages Docker configuration, environment settings, and logs.
 
 ## 3. C4-Style System Context Diagram
 ```mermaid
 graph TD
-    User[User / Client App] -->|HTTPS Requests| System[AgentForge Task Manager System]
+    User[User / Client App] -->|HTTPS Requests| System[{ctx.project_name} System]
     System -->|Queries/Persists| DB[(PostgreSQL Database System)]
     System -->|Pushes Events| Obs[Observability Event Log]
 ```
@@ -533,10 +495,9 @@ graph TD
 ## 5. Component Diagram
 ```mermaid
 graph TD
-    Router[FastAPI API Router] -->|Dispatches request| Controller[Authentication/Task Controller]
+    Router[FastAPI API Router] -->|Dispatches request| Controller[API Router Controller]
     Controller -->|Validates payload| Schema[Pydantic Validation Models]
-    Controller -->|Delegates logic| Service[Business Logic Service Layer]
-    Service -->|Accesses database| Repository[SQLAlchemy Repository Layer]
+{services_str}
 ```
 
 ## 6. Deployment Diagram
@@ -552,35 +513,16 @@ graph TD
 ```
 
 ## 7. PostgreSQL Schema Design & Database Indexing Notes
-The relational schema comprises two principal tables: `users` and `tasks`.
+The database schema consists of the following relational tables:
 
 ```sql
-CREATE TABLE users (
-    id UUID PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    hashed_password VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE tasks (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    title VARCHAR(100) NOT NULL,
-    description TEXT,
-    priority VARCHAR(20) DEFAULT 'medium',
-    status VARCHAR(20) DEFAULT 'pending',
-    due_date TIMESTAMP WITH TIME ZONE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+{ddl_str}
 ```
 
 ### Database Indexing Notes
 To optimize query performance:
-1. An index on `users(username)` is automatically created via the `UNIQUE` constraint.
-2. A foreign key index on `tasks(user_id)` is created to speed up user-specific task fetches.
-3. A composite index on `tasks(user_id, status)` is added to optimize task list filtering.
+1. Index foreign key columns to speed up relational fetches.
+2. Composite index on status columns to speed up list filtering.
 
 ## 8. Architectural Decision Records (ADR)
 
@@ -588,25 +530,25 @@ To optimize query performance:
 - **Status**: Accepted
 - **Context**: The application requires highly performant async API processing.
 - **Decision**: Selected FastAPI due to Pydantic integration, automatic OpenAPI, and speed.
-- **Consequences**: Fast development cycles but requires developer familiarity with ASGI.
 
 ### ADR-02: PostgreSQL for Relational Durability
 - **Status**: Accepted
-- **Context**: Task management demands transactional integrity (ACID) and robust relationships.
-- **Decision**: Selected PostgreSQL over MongoDB or SQLite.
-- **Consequences**: Guaranteed consistency but requires setting up persistent Docker volumes.
+- **Context**: Relational data integrity is critical for transactions.
+- **Decision**: Selected PostgreSQL to guarantee consistency.
 
 ## 9. Security Threat Model Summary
-Using the STRIDE framework:
-- **Spoofing**: Mitigated by signed JWT tokens and bcrypt password hashing.
-- **Tampering**: Mitigated by schema integrity checks and database constraints.
-- **Repudiation**: Mitigated by comprehensive transaction and access audit logging.
-- **Information Disclosure**: Mitigated by SSL/TLS encryption and redacting hashes from payloads.
-- **Denial of Service**: Mitigated by implementing API rate limiting middleware.
+To ensure the system's resilience, we model key threats and mitigations:
+- **STRIDE-1 (Spoofing)**: Mitigated by requiring secure JWT signatures and validating user session keys.
+- **STRIDE-2 (Tampering)**: Mitigated by database constraints and transport layer encryption.
+- **STRIDE-3 (Information Disclosure)**: Mitigated by encrypted database connections and CORS headers.
 """
         else:
             name = "06_Technology_Stack.md"
-            meta = get_metadata_header(task.description, "06_Technology_Stack")
+            meta = get_metadata_header(ctx.project_name, "06_Technology_Stack")
+
+            # Stack justification
+            justification = get_stack_rationale(ctx.normalized_domain)
+
             content = f"""# Technology Stack
 
 {meta}
@@ -614,35 +556,43 @@ Using the STRIDE framework:
 ## 1. Stack Choices and Target Versions
 The system relies on the following target component versions:
 
-- **Backend Runtime**: Python `v3.11`
-- **API Framework**: FastAPI `v0.110.0`
-- **Database Engine**: PostgreSQL `v16.0`
-- **Database Driver / ORM**: SQLAlchemy `v2.0.0`
-- **Database Migrations**: Alembic `v1.13.0`
-- **Testing Engine**: pytest `v8.0.0`
-- **Containerization**: Docker `v24.0.0` & Docker Compose `v2.20.0`
+- **Backend Runtime**: Python `v3.11` (Selected for modern language features, performance improvements, and stable library compatibility).
+- **API Framework**: FastAPI `v0.110.0` (Asynchronous performance, instant OpenAPI generation, and native type hint checking).
+- **Database Engine**: PostgreSQL `v16.0` (Robust, enterprise-grade relational database guaranteeing transactional ACID properties).
+- **Database Driver / ORM**: SQLAlchemy `v2.0.0` (Unified model syntax, robust connection pooling, and declarative mappings).
+- **Database Migrations**: Alembic `v1.13.0` (Clean schema evolution versioning, automatic generation scripts, and rollback support).
+- **Testing Engine**: pytest `v8.0.0` (Lightweight testing, clean fixture inheritance, and extensive plugin support).
+- **Containerization**: Docker `v24.0.0` & Docker Compose `v2.20.0` (Guaranteed reproducibility across environments).
 
 ## 2. Dependency Categories
-- **Direct Dependencies**: FastAPI, SQLAlchemy, Pydantic, PyJWT, passlib, bcrypt.
-- **Indirect/Transitive Dependencies**: AnyIO, Starlette, greenlet, typing-extensions.
-- **Dev/Testing Dependencies**: pytest, pytest-cov, ruff, mypy, httpx.
 
-## 3. Alternatives Considered and Decision Rationale
+### Direct Production Dependencies
+- **FastAPI**: Main routing and controller entrypoints handler.
+- **SQLAlchemy**: The Object Relational Mapper used to communicate securely with PostgreSQL.
+- **Pydantic**: Data schema parsing and request payload validation.
+- **PyJWT**: Secure creation and validation of cryptographic user login tokens.
+- **Passlib & Bcrypt**: One-way salting and hashing of sensitive user passwords.
 
-| Layer | Chosen | Version | Alternatives | Rationale |
-|-------|--------|---------|--------------|-----------|
-| API   | FastAPI| 0.110.0 | Flask, Django| Built-in validation |
-| DB    | PostgreSQL| 16.0 | MySQL, SQLite| ACID transaction |
-| ORM   | SQLAlch.| 2.0.0   | Tortoise ORM | Industry standard |
-| Container| Docker| 24.0.0| Podman       | De-facto packaging |
-| Test  | pytest | 8.0.0   | unittest     | Simple syntax |
+### Development and Test Dependencies
+- **pytest & httpx**: Integration testing of REST endpoints and database behaviors.
+- **pytest-cov**: Verifying that total code test coverage stays above the mandatory 90% threshold.
+- **Ruff**: Modern, ultra-fast Python linter and formatter to keep code clean and uniform.
+- **MyPy**: Static type checker to catch potential type errors prior to execution.
+
+## 3. Rationale for Stack Choices
+{justification}
+This collection of technologies forms an industry-standard modern stack for enterprise APIs. The components are chosen for their high performance, strong type-safety features, active community support, and ease of deployment.
 
 ## 4. Stack Maintenance and Security Scanning
 To keep the technology stack secure and modern, we will execute automated dependency
 vulnerability scanning weekly. Standard tools like `pip-audit` or `safety` will run inside the
 CI pipeline to verify no known CVEs exist in installed packages.
-Any upgrade of direct dependencies (such as FastAPI or SQLAlchemy) will run through integration
-testing to verify no breaking API mutations affect the system stability.
+Additionally, dependabot or similar automated dependency update tools will be configured to regularly check for security patches.
+
+## 5. Alternatives Considered and Decision Rationale
+- **Alternative 1: Django/Flask**: Discarded due to lack of native async support, heavy default footprint (Django), or manual validation wiring (Flask).
+- **Alternative 2: SQLite**: Discarded as it is not suited for high concurrency or distributed multi-replica container environments.
+- **Alternative 3: MongoDB**: Discarded since relational integrity, strict foreign key constraints, and join logic are required.
 """
         return AgentResult(
             status=AgentExecutionStatus.SUCCESS,
@@ -667,49 +617,38 @@ class ImplementationAgentPlugin:
         )
 
     def execute(self, task: ProjectTask) -> AgentResult:
-        meta = get_metadata_header(task.description, "07_Implementation_Plan")
+        ctx = get_resolved_context(task)
+        meta = get_metadata_header(ctx.project_name, "07_Implementation_Plan")
+
+        # Dynamic phases based on modules
+        phases_lines = [
+            "### Phase 1: Environment & Repository Setup\n- **Objective**: Establish the boilerplate, directory structure, configurations, and linter gates.\n- **Estimated Effort**: 3 Days\n- **Deliverables**: Repository scaffold, `pyproject.toml`, Ruff rules.",
+            "### Phase 2: User Authentication & Role-Based Access (RBAC)\n- **Objective**: Implement user registration, OAuth2 login token endpoint, and JWT authentication.\n- **Estimated Effort**: 4 Days\n- **Deliverables**: Registration API, login API, authentication middleware."
+        ]
+        for i, mod in enumerate(ctx.modules):
+            phases_lines.append(f"### Phase {i+3}: {mod} Implementation\n- **Objective**: Implement backend services, models, and endpoints for {mod.lower()}.\n- **Estimated Effort**: 5 Days\n- **Deliverables**: Core API endpoints, migrations, and Pydantic schemas for {mod}.")
+        
+        qa_index = len(ctx.modules) + 3
+        deploy_index = len(ctx.modules) + 4
+        phases_lines.append(f"### Phase {qa_index}: Integration Testing & QA\n- **Objective**: Write comprehensive unit tests and integration tests.\n- **Estimated Effort**: 4 Days\n- **Deliverables**: pytest suite with 90% code coverage.")
+        phases_lines.append(f"### Phase {deploy_index}: Containerization & Deployment Orchestration\n- **Objective**: Build Dockerfiles and Compose configs to launch the application stack.\n- **Estimated Effort**: 3 Days\n- **Deliverables**: `Dockerfile`, `docker-compose.yml`.")
+
+        phases_str = "\n\n".join(phases_lines)
+
         content = f"""# Implementation Plan
 
 {meta}
 
 ## 1. Project Phases
 
-### Phase 1: Environment & Repository Setup
-- **Objective**: Establish the boilerplate, directory structure, configurations, and linter gates.
-- **Estimated Effort**: 3 Days
-- **Deliverables**: Repository scaffold, `pyproject.toml`, Ruff rules, and pre-commit hooks.
-
-### Phase 2: Database Schema & Migration Script Setup
-- **Objective**: Define relational models, database connections, and Alembic configuration.
-- **Estimated Effort**: 4 Days
-- **Deliverables**: SQLAlchemy database models, Alembic environment, migration history scripts.
-
-### Phase 3: Core Security & Auth Endpoints
-- **Objective**: Implement user registration, OAuth2 login token endpoint, and JWT authentication.
-- **Estimated Effort**: 5 Days
-- **Deliverables**: Registration API, login API, and authentication middleware.
-
-### Phase 4: Task CRUD Endpoints Development
-- **Objective**: Develop APIs for creating, updating, retrieving, and deleting tasks.
-- **Estimated Effort**: 6 Days
-- **Deliverables**: `/tasks` endpoints, Pydantic schemas, and sorting/filtering queries.
-
-### Phase 5: Verification & Testing Suite Integration
-- **Objective**: Write comprehensive unit tests and integration tests.
-- **Estimated Effort**: 4 Days
-- **Deliverables**: pytest suite, database mocks, coverage metrics report showing >=90% coverage.
-
-### Phase 6: Docker Containerization & Deployment Orchestration
-- **Objective**: Build Dockerfiles and Docker Compose files to launch the application stack.
-- **Estimated Effort**: 3 Days
-- **Deliverables**: `Dockerfile`, `docker-compose.yml`, local running documentation guide.
+{phases_str}
 
 ## 2. Milestones and Dependencies
 
 - **Milestone 1**: Project repository scaffold initialized (Dependency: None)
 - **Milestone 2**: Relational schema successfully applied to Postgres (Dependency: Milestone 1)
 - **Milestone 3**: User registration and login flows operational (Dependency: Milestone 2)
-- **Milestone 4**: Tasks CRUD APIs fully passing tests (Dependency: Milestone 3)
+- **Milestone 4**: Core domain APIs fully passing tests (Dependency: Milestone 3)
 - **Milestone 5**: Docker Compose environment running successfully (Dependency: Milestone 4)
 
 ## 3. Acceptance Criteria per Phase
@@ -717,12 +656,10 @@ class ImplementationAgentPlugin:
 - **Phase 2**: Database migrations can be run forwards and backwards successfully.
 - **Phase 3**: JWT authorization token verified successfully.
 - **Phase 4**: CRUD operations return correct HTTP status codes.
-- **Phase 5**: Pytest test suite achieves at least 90% code coverage.
-- **Phase 6**: Running `docker-compose up` launches web and database services correctly.
 """
         return AgentResult(
             status=AgentExecutionStatus.SUCCESS,
-            summary="Generated implementation plan artifact.",
+            summary=f"Generated implementation plan artifact for {ctx.project_name}.",
             artifacts=(Artifact(name="07_Implementation_Plan.md", content=content),),
             confidence=0.9,
         )
@@ -747,17 +684,23 @@ class OperationsAgentPlugin:
         )
 
     def execute(self, task: ProjectTask) -> AgentResult:
+        ctx = get_resolved_context(task)
         caps = {c.name for c in task.required_capabilities}
+
         if "testing-strategy" in caps:
             name = "08_Testing_Strategy.md"
-            meta = get_metadata_header(task.description, "08_Testing_Strategy")
+            meta = get_metadata_header(ctx.project_name, "08_Testing_Strategy")
+
+            # Dynamic test cases
+            test_cases_str = get_test_cases(ctx.normalized_domain)
+
             content = f"""# Testing Strategy
 
 {meta}
 
 ## 1. Test Strategy Overview
 This document specifies the testing strategy for the project:
-"{task.description}".
+"{ctx.project_name}".
 To guarantee code quality and prevent regression errors, the project implements a
 multi-tiered testing framework encompassing unit tests, integration tests, and API contract
 verification tests.
@@ -783,23 +726,7 @@ API testing checks the correctness of endpoints, security headers, and response 
 
 ## 3. Sample Test Cases
 
-### TC-AUTH-001: Register New User
-- **Input**:
-  `{{"username": "testuser",`
-  ` "email": "test@example.com",`
-  ` "password": "SecurePassword123"}}`
-- **Expected Outcome**: Return HTTP 201 Created with JSON matching the registration model.
-
-### TC-AUTH-002: Login with Incorrect Password
-- **Input**:
-  `{{"username": "testuser",`
-  ` "password": "WrongPassword"}}`
-- **Expected Outcome**: Return HTTP 401 Unauthorized with error detail payload.
-
-### TC-TASK-001: Create Task Without Title
-- **Input**:
-  `{{"description": "This task lacks a title."}}`
-- **Expected Outcome**: Return HTTP 422 Unprocessable Entity due to validation error.
+{test_cases_str}
 
 ## 4. Coverage Targets
 The target coverage is set to a minimum of 90% across the codebase.
@@ -808,17 +735,27 @@ this threshold. Code coverage reports are generated automatically using `pytest-
 """
         elif "deployment-planning" in caps:
             name = "09_Deployment_Plan.md"
-            meta = get_metadata_header(task.description, "09_Deployment_Plan")
+            meta = get_metadata_header(ctx.project_name, "09_Deployment_Plan")
+
+            # Environment notes
+            if ctx.normalized_domain == "library-management":
+                deploy_notes = "Optimized for school or educational institutional deployment. Fits low-spec on-premise servers."
+            elif ctx.normalized_domain == "hospital-management":
+                deploy_notes = "Must be deployed inside a private, firewalled hospital network with encrypted storage volumes."
+            else:
+                deploy_notes = "Designed for standard cloud hosting platforms (e.g. AWS, GCP, or local Docker environments)."
+
             content = f"""# Deployment Plan
 
 {meta}
 
 ## 1. Deployment Environments
+{deploy_notes}
 
 ### Local Environment Setup
 To run the application locally:
 1. Clone the repository and initialize a Python virtual environment.
-2. Install dependencies: `pip install -r requirements.txt`.
+2. Install dependencies: `pip install -e .`.
 3. Set environment variables in a local `.env` file.
 4. Launch database: `docker-compose up -d db`.
 5. Run migrations: `alembic upgrade head`.
@@ -837,7 +774,6 @@ The following variables must be configured in production:
 - `DATABASE_URL`: Relational database connection string.
 - `SECRET_KEY`: High-entropy key used to sign JWT authorization claims.
 - `ALGORITHM`: Set to HS256 for standard JWT signing.
-- `ACCESS_TOKEN_EXPIRE_MINUTES`: Expiration time for generated tokens.
 
 ## 3. Database Migration Process
 Relational schema migrations are managed via Alembic.
@@ -860,14 +796,24 @@ If a deployment fails, the following rollback steps must be executed:
 """
         else:
             name = "10_Risk_Assessment.md"
-            meta = get_metadata_header(task.description, "10_Risk_Assessment")
+            meta = get_metadata_header(ctx.project_name, "10_Risk_Assessment")
+
+            # Dynamic risk matrix
+            risk_lines = []
+            for i, risk in enumerate(ctx.risks):
+                severity = "High" if i % 2 == 0 else "Medium"
+                impact = "Crit" if i % 2 == 0 else "Medium"
+                prob = "Low" if i % 2 == 0 else "Medium"
+                risk_lines.append(f"| RSK-{i+1:03d} | {risk.capitalize()} | {prob} | {impact} | {severity} | Input validation / Constraints | Audit trail review |")
+            risk_table = "\n".join(risk_lines)
+
             content = f"""# Risk Assessment
 
 {meta}
 
 ## 1. Project Risk Management
 This document identifies potential security, reliability, and delivery risks for:
-"{task.description}".
+"{ctx.project_name}".
 We establish mitigation actions and contingency plans for all major risks to ensure successful
 system development and operations.
 
@@ -875,11 +821,7 @@ system development and operations.
 
 | Risk ID | Description | Prob. | Impact | Severity | Mitigation | Contingency |
 |---------|-------------|-------|--------|----------|------------|-------------|
-| RSK-001 | DB Failure  | Low   | Crit   | High     | Pool & retry| Restore backup|
-| RSK-002 | SQL Inject  | Low   | Crit   | High     | ORM query  | Key rotation|
-| RSK-003 | High Latency| Medium| Medium | Medium   | DB index   | Cache replica|
-| RSK-004 | Start Fail  | Medium| High   | High     | CI tests   | Rollback image|
-| RSK-005 | Token Leak  | Low   | Crit   | High     | Env secret | Revoke token|
+{risk_table}
 
 ## 3. Security Risk Management
 We mandate regular security scans for third-party libraries and code quality tools.
@@ -895,9 +837,109 @@ regulatory compliance shifts will trigger an update to this document.
 This keeps our threat model and mitigations fully aligned with the active environment.
 We will assign ownership for each risk item to ensure active monitoring.
 """
+
         return AgentResult(
             status=AgentExecutionStatus.SUCCESS,
-            summary=f"Generated operations artifact: {name}.",
+            summary=f"Generated operations/requirements artifact: {name}.",
             artifacts=(Artifact(name=name, content=content),),
             confidence=0.9,
         )
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for dynamic document sections
+# ---------------------------------------------------------------------------
+
+def get_table_ddl(table: str) -> str:
+    """Return DDL definition for a given database table name."""
+    fields = {
+        "users": "    id UUID PRIMARY KEY,\n    username VARCHAR(50) UNIQUE NOT NULL,\n    email VARCHAR(100) UNIQUE NOT NULL,\n    hashed_password VARCHAR(255) NOT NULL",
+        "roles": "    id UUID PRIMARY KEY,\n    name VARCHAR(30) UNIQUE NOT NULL",
+        "members": "    id UUID PRIMARY KEY,\n    user_id UUID REFERENCES users(id),\n    borrowing_limit INTEGER DEFAULT 5",
+        "books": "    id UUID PRIMARY KEY,\n    isbn VARCHAR(20) UNIQUE NOT NULL,\n    title VARCHAR(100) NOT NULL,\n    author VARCHAR(100) NOT NULL",
+        "book_copies": "    id UUID PRIMARY KEY,\n    book_id UUID REFERENCES books(id),\n    status VARCHAR(20) DEFAULT 'available'",
+        "loans": "    id UUID PRIMARY KEY,\n    member_id UUID REFERENCES members(id),\n    book_copy_id UUID REFERENCES book_copies(id),\n    due_date TIMESTAMP WITH TIME ZONE,\n    status VARCHAR(20) DEFAULT 'issued'",
+        "reservations": "    id UUID PRIMARY KEY,\n    member_id UUID REFERENCES members(id),\n    book_id UUID REFERENCES books(id),\n    status VARCHAR(20) DEFAULT 'pending'",
+        "fines": "    id UUID PRIMARY KEY,\n    loan_id UUID REFERENCES loans(id),\n    amount DECIMAL(10,2) NOT NULL,\n    status VARCHAR(20) DEFAULT 'unpaid'",
+        "products": "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    price DECIMAL(10,2) NOT NULL,\n    stock INTEGER DEFAULT 0",
+        "orders": "    id UUID PRIMARY KEY,\n    user_id UUID REFERENCES users(id),\n    total DECIMAL(10,2) NOT NULL,\n    status VARCHAR(20) DEFAULT 'pending'",
+        "order_items": "    id UUID PRIMARY KEY,\n    order_id UUID REFERENCES orders(id),\n    product_id UUID REFERENCES products(id),\n    quantity INTEGER NOT NULL",
+        "payments": "    id UUID PRIMARY KEY,\n    order_id UUID REFERENCES orders(id),\n    amount DECIMAL(10,2) NOT NULL,\n    status VARCHAR(20) DEFAULT 'completed'",
+        "courses": "    id UUID PRIMARY KEY,\n    title VARCHAR(100) NOT NULL,\n    instructor_id UUID REFERENCES users(id)",
+        "lessons": "    id UUID PRIMARY KEY,\n    course_id UUID REFERENCES courses(id),\n    title VARCHAR(100) NOT NULL",
+        "quizzes": "    id UUID PRIMARY KEY,\n    lesson_id UUID REFERENCES lessons(id),\n    max_score INTEGER DEFAULT 100",
+        "enrollments": "    id UUID PRIMARY KEY,\n    student_id UUID REFERENCES users(id),\n    course_id UUID REFERENCES courses(id)",
+        "patients": "    id UUID PRIMARY KEY,\n    user_id UUID REFERENCES users(id),\n    date_of_birth DATE NOT NULL",
+        "appointments": "    id UUID PRIMARY KEY,\n    patient_id UUID REFERENCES patients(id),\n    doctor_id UUID REFERENCES users(id),\n    appointment_time TIMESTAMP WITH TIME ZONE",
+        "prescriptions": "    id UUID PRIMARY KEY,\n    appointment_id UUID REFERENCES appointments(id),\n    medication VARCHAR(100) NOT NULL,\n    dosage VARCHAR(50) NOT NULL",
+        "inventory_items": "    id UUID PRIMARY KEY,\n    sku VARCHAR(50) UNIQUE NOT NULL,\n    quantity INTEGER DEFAULT 0",
+        "warehouses": "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    location VARCHAR(255)",
+        "purchase_orders": "    id UUID PRIMARY KEY,\n    supplier_id UUID REFERENCES suppliers(id),\n    total DECIMAL(10,2) NOT NULL",
+        "suppliers": "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    email VARCHAR(100)",
+    }
+    f_str = fields.get(table, "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL")
+    return f"CREATE TABLE {table} (\n{f_str},\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP\n);"
+
+
+def get_stack_rationale(domain: str) -> str:
+    """Return domain stack rationale justification."""
+    if domain == "library-management":
+        return "FastAPI provides instant OpenAPI documentation, making it easy to build Catalog search endpoints. PostgreSQL ensures ACID transactions for book copy checkout (loans) and reservation status updates, preventing double issuing of the same physical copy."
+    if domain == "ecommerce":
+        return "FastAPI uses modern ASGI concurrency to support thousands of customers browsing and checking out simultaneously. PostgreSQL handles critical payment and order state transaction safety with high integrity."
+    if domain == "hospital-management":
+        return "FastAPI supports secure token authentication for patient record endpoints. PostgreSQL supports relational schema complexity for patient histories, appointments, and bills, with encryption compatibility for HIPAA compliance."
+    return "FastAPI is lightweight with high performance for web APIs. PostgreSQL is a mature relational database ensuring ACID transactional safety and relational durability."
+
+
+def get_test_cases(domain: str) -> str:
+    """Return tailored test cases for the domain."""
+    if domain == "library-management":
+        return """### TC-CIRC-001: Librarian can issue available book copy
+- **Input**: `{ "member_id": "member-uuid", "book_copy_id": "copy-uuid" }`
+- **Expected Outcome**: Return HTTP 201 Created. Loan status set to issued.
+
+### TC-CIRC-002: Unavailable book copy cannot be issued
+- **Input**: `{ "member_id": "member-uuid", "book_copy_id": "copy-uuid-already-loaned" }`
+- **Expected Outcome**: Return HTTP 400 Bad Request due to copy status conflict.
+
+### TC-FINE-001: Overdue fine is calculated correctly
+- **Input**: Trigger daily fine calculation routine for overdue loan record.
+- **Expected Outcome**: Overdue fine record generated matching configured rate * days.
+
+### TC-RES-001: Reserved book copy cannot be issued to other members
+- **Input**: Member B tries to borrow copy currently reserved by Member A.
+- **Expected Outcome**: Return HTTP 403 Forbidden due to reservation conflict.
+
+### TC-MEMB-001: Student can search catalog
+- **Input**: Query catalog by title or ISBN.
+- **Expected Outcome**: Return list of matching books with availability status.
+
+### TC-CIRC-003: Student cannot issue a book directly without librarian approval
+- **Input**: Student tries to POST loan directly.
+- **Expected Outcome**: Return HTTP 403 Forbidden.
+
+### TC-REP-001: Admin can generate reports
+- **Input**: Request overdue and inventory report compilation.
+- **Expected Outcome**: Return formatted reports successfully."""
+    
+    if domain == "ecommerce":
+        return """### TC-ORD-001: Customer checkout creates order
+- **Input**: `{ "cart_id": "cart-uuid" }`
+- **Expected Outcome**: Order created, stock reserved, transaction marked pending payment.
+
+### TC-PAY-001: Payment transaction processing
+- **Input**: Pay for order using payment gateway payload.
+- **Expected Outcome**: Status set to paid, invoice issued.
+
+### TC-INV-001: Restock trigger on low stock
+- **Input**: Reduce inventory below minimum threshold.
+- **Expected Outcome**: System triggers inventory alert email."""
+        
+    return """### TC-AUTH-001: Register New User
+- **Input**: User registration parameters.
+- **Expected Outcome**: Return HTTP 201 Created.
+
+### TC-AUTH-002: Login with Incorrect Password
+- **Input**: Bad password payload.
+- **Expected Outcome**: Return HTTP 401 Unauthorized."""

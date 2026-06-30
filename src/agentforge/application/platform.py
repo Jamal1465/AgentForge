@@ -169,10 +169,14 @@ class AgentForgePlatform:
 
     def create_planning_workflow(self, description: str) -> WorkflowGraph:
         """Create a capability-routed planning workflow from a project idea."""
+        from agentforge.domain_analysis.domain_analyzer import DomainAnalyzer
+        ctx = DomainAnalyzer().analyze(description)
+
         task = ProjectTask(
             title="Create initial project plan",
             description=description,
             required_capabilities=(Capability("planning"),),
+            domain_context=ctx,
         )
         nodes = {
             "plan": WorkflowNode(node_id="plan", title="Create initial project plan", task=task)
@@ -208,6 +212,7 @@ class AgentForgePlatform:
                     title=f"Generate {filename}",
                     description=description,
                     required_capabilities=(Capability(capability),),
+                    domain_context=ctx,
                 ),
                 dependencies=("plan",),
             )
