@@ -166,7 +166,6 @@ class EvaluationService:
         result: AgentResult,
         task: ProjectTask,
     ) -> tuple[float, str, tuple[EvaluationFinding, ...]]:
-        del task
         findings: list[EvaluationFinding] = []
         match criterion.criterion_id:
             case "agent-result-status":
@@ -248,6 +247,26 @@ class EvaluationService:
                         tuple(findings),
                     )
                 return 1.0, "All artifacts contain non-empty content.", ()
+            case "agent-result-domain-consistency":
+                from agentforge.agents.artifact_agents import get_resolved_context
+                from agentforge.application.evaluation.domain_consistency import (
+                    DomainConsistencyEvaluator,
+                )
+
+                ctx = get_resolved_context(task)
+                evaluator = DomainConsistencyEvaluator()
+                total_score = 1.0
+                reasons = []
+                for artifact in result.artifacts:
+                    art_score, art_reason, art_findings = evaluator.evaluate(artifact, ctx)
+                    total_score = min(total_score, art_score)
+                    if art_reason:
+                        reasons.append(f"{artifact.name}: {art_reason}")
+                    findings.extend(art_findings)
+
+                if total_score < 1.0:
+                    return total_score, "; ".join(reasons), tuple(findings)
+                return 1.0, "All artifacts maintain perfect domain consistency.", ()
             case _:
                 return 1.0, "Criterion has no deterministic checker yet; treated as satisfied.", ()
 
@@ -443,6 +462,15 @@ def default_agent_result_rubric() -> EvaluationRubric:
                 weight=1.0,
                 min_score=0.7,
                 required=False,
+            ),
+            EvaluationCriterion(
+                criterion_id="agent-result-domain-consistency",
+                name="Domain Consistency",
+                category=EvaluationMetricCategory.CORRECTNESS,
+                description="Checks that all generated artifacts maintain domain consistency and exclude wrong-domain content.",
+                weight=3.0,
+                min_score=1.0,
+                required=True,
             ),
         ),
     )
