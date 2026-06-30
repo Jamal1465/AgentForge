@@ -34,6 +34,14 @@ class DomainContext:
     constraints: list[str] = field(default_factory=list)
     out_of_scope: list[str] = field(default_factory=list)
 
+    # Required fields for user prompt
+    domain_type: str = ""
+    primary_problem: str = ""
+    target_users: list[str] = field(default_factory=list)
+    core_entities: list[str] = field(default_factory=list)
+    core_workflows: list[str] = field(default_factory=list)
+    domain_risks: list[str] = field(default_factory=list)
+
     # Legacy & helpers for backward compatibility
     actors: list[str] = field(default_factory=list)
     validation_rules: list[str] = field(default_factory=list)
@@ -41,6 +49,25 @@ class DomainContext:
     request_response_examples: str = ""
     authorization_matrix: str = ""
     traceability_matrix: str = ""
+
+    def __post_init__(self) -> None:
+        """Initialize fields dynamically for backward and forward compatibility."""
+        if not self.target_users:
+            users = self.primary_users + self.secondary_users
+            object.__setattr__(self, "target_users", users)
+        if not self.core_entities:
+            object.__setattr__(self, "core_entities", self.entities)
+        if not self.core_workflows:
+            object.__setattr__(self, "core_workflows", self.workflows)
+        if not self.domain_risks:
+            object.__setattr__(self, "domain_risks", self.risks)
+        if not self.primary_problem:
+            prob = self.domain_problems[0] if self.domain_problems else "Lack of automated operations."
+            object.__setattr__(self, "primary_problem", prob)
+        if not self.domain_type:
+            object.__setattr__(self, "domain_type", self.project_name)
+        if not self.actors:
+            object.__setattr__(self, "actors", self.primary_users + self.secondary_users)
 
     def to_dict(self) -> dict[str, object]:
         """Serialize domain context."""
@@ -75,4 +102,11 @@ class DomainContext:
             "request_response_examples": self.request_response_examples,
             "authorization_matrix": self.authorization_matrix,
             "traceability_matrix": self.traceability_matrix,
+            # Universal Domain Analyzer additions
+            "domain_type": self.domain_type,
+            "primary_problem": self.primary_problem,
+            "target_users": list(self.target_users),
+            "core_entities": list(self.core_entities),
+            "core_workflows": list(self.core_workflows),
+            "domain_risks": list(self.domain_risks),
         }

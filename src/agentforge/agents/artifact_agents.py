@@ -77,9 +77,6 @@ class BriefAgentPlugin:
         # Format success criteria list
         success_str = "\n".join(f"- {crit}" for crit in ctx.measurable_success_criteria)
 
-        # Format modules list
-        modules_str = "\n".join(f"- **{mod}**: Coordinates related workflows and data components." for mod in ctx.modules)
-
         # Format out of scope list
         out_of_scope_str = "\n".join(f"- {item}" for item in ctx.out_of_scope)
 
@@ -94,30 +91,28 @@ class BriefAgentPlugin:
 {meta}
 
 ## 1. Executive Summary
-This document serves as the official project brief for the software system:
-"{ctx.project_name}".
-This initiative will build a robust system tailored for the `{ctx.normalized_domain}` domain. 
-Specifically, the system addresses the needs of the `{ctx.institution_context}`.
+This document serves as the official project brief for the software system: "{ctx.project_name}".
+This initiative will build a robust system tailored for the `{ctx.normalized_domain}` domain, addressing the operational needs of the `{ctx.institution_context}`.
 
 {ctx.domain_summary}
 
-The implementation focuses on core capabilities such as secure access control, data persistence, and transaction integrity. By providing a clean interface and robust backend services, the application enables users to manage domain operations efficiently while maintaining complete auditability.
+The implementation of the `{ctx.project_name}` focuses on core capabilities such as secure access control for `{", ".join(ctx.primary_users)}`, data persistence for `{ctx.entities[0] if ctx.entities else "domain"}` records, and `{ctx.workflows[0] if ctx.workflows else "operational"}` transaction integrity. By providing a clean interface and robust backend services, the application enables `{", ".join(ctx.secondary_users)}` to manage `{ctx.normalized_domain}` operations efficiently while maintaining complete auditability.
 
 ## 2. Project Vision
 Our vision is to deploy a production-ready `{ctx.project_name}` that transforms operational workflows within the `{ctx.institution_context}`.
-The system will replace manual, error-prone record-keeping with automated transactions, ensuring high availability, speed, and reliability. By establishing a centralized repository, the platform provides real-time status visibility, enhances user self-service, and enables managers to make data-driven decisions based on accurate reports.
+The system will replace manual record-keeping with automated `{ctx.workflows[0] if ctx.workflows else "domain"}` transactions, ensuring high availability, speed, and reliability. By establishing a centralized repository for `{ctx.entities[0] if ctx.entities else "domain"}` records, the platform provides real-time status visibility, enhances `{", ".join(ctx.primary_users)}` self-service, and enables `{", ".join(ctx.secondary_users)}` to make data-driven decisions based on accurate reports.
 
 ## 3. Problem Statement
 The current operations in the `{ctx.institution_context}` are hindered by key domain challenges:
 {problems_str}
 
-These pain points lead to operational delays, security vulnerabilities, data discrepancies, and a lack of reliable audit trails. The system is designed to directly resolve these issues by introducing automated transaction validations and structured datastores.
+These pain points lead to operational delays, security vulnerabilities, and data discrepancies in `{ctx.entities[0] if ctx.entities else "domain"}` records, resulting in a lack of reliable audit trails. The `{ctx.project_name}` is designed to directly resolve these issues by introducing automated transaction validations for `{ctx.workflows[0] if ctx.workflows else "domain"}` operations and structured datastores.
 
 ## 4. Goals and Objectives
 The primary business goals for the `{ctx.project_name}` are:
 {goals_str}
 
-To achieve these goals, the development team will build a secure API service, implement data integrity constraints at the database level, and automate key business workflows.
+To achieve these goals, the development team will build a secure API service, implement `{ctx.entities[0] if ctx.entities else "domain"}` data integrity constraints at the database level, and automate key business workflows such as `{", ".join(ctx.workflows[:2])}`.
 
 ## 5. Target Users
 The system serves distinct user roles, each with specific responsibilities:
@@ -134,19 +129,18 @@ By separating roles, the system enforces access security and ensures that users 
 
 ## 7. Scope of Work
 The project scope covers the implementation of the following functional areas:
-- Design and deployment of the relational database schema.
+- Design and deployment of the relational database schema tracking key entities: {", ".join(ctx.entities)}.
 - Implementation of secure OAuth2 authentication and role-based access control (RBAC).
 - Development of core domain modules: {", ".join(ctx.modules)}.
-- Automation of business rules and workflow transaction validators.
+- Automation of business rules and workflow transaction validators: {", ".join(ctx.workflows)}.
 - Integration of status monitoring, error logs, and automated test coverage.
 
 ## 8. Out-of-Scope Items
 To keep the initial delivery focused, the following areas are excluded:
 {out_of_scope_str}
 
-## 9. High-Level Modules
-The application architecture is divided into the following key modules:
-{modules_str}
+## 9. Measurable Business Value
+By deploying the system, the organization will experience reduced transaction cycle times, improved inventory tracking accuracy, and complete visibility into active domain statuses.
 
 ## 10. Success Criteria
 The project will be evaluated against the following measurable success criteria:
@@ -210,11 +204,12 @@ class RequirementsAgentPlugin:
             api_table = "\n".join(api_lines)
 
             # Bullet lists
-            actors_bullet = "\n".join(f"- **{actor}**: Has designated access levels for domain actions." for actor in ctx.actors)
-            entities_bullet = "\n".join(f"- **{entity}**: Core domain model tracked in database." for entity in ctx.entities)
+            actors_bullet = "\n".join(f"- **{actor}**: {ctx.actors_with_responsibilities.get(actor, 'Manages operations in the ' + ctx.project_name + ' system.')}" for actor in ctx.actors)
+            entities_bullet = "\n".join(f"- **{entity}**: Represents a core {entity.lower()} entity managed within the {ctx.normalized_domain} database schema." for entity in ctx.entities)
             br_bullet = "\n".join(f"- **BR-{i+1:03d}**: {rule}" for i, rule in enumerate(ctx.business_rules))
             val_bullet = "\n".join(f"- {rule}" for rule in ctx.validation_rules)
-            ec_bullet = "\n".join(f"- {case}" for case in ctx.edge_cases)
+            edge_cases_list = ctx.edge_cases if ctx.edge_cases else [f"EC-001: Concurrent access to the same {ctx.entities[0].lower()} record. (Mitigation: Use serializable transaction locks)"]
+            ec_bullet = "\n".join(f"- {case}" for case in edge_cases_list)
 
             # Detailed functional requirements specifications
             fr_specs_lines = []
@@ -228,9 +223,8 @@ class RequirementsAgentPlugin:
                 req_title_lower = req_title.lower()
                 for actor in ctx.actors:
                     actor_lower = actor.lower()
-                    # Check if actor is likely responsible
-                    if "student" in actor_lower or "faculty" in actor_lower:
-                        if any(w in req_title_lower for w in ["search", "filter", "reserve", "register", "profile"]):
+                    if "student" in actor_lower or "faculty" in actor_lower or "member" in actor_lower:
+                        if any(w in req_title_lower for w in ["search", "filter", "reserve", "register", "profile", "book"]):
                             relevant_actors.append(actor)
                     elif "librarian" in actor_lower or "merchant" in actor_lower or "manager" in actor_lower or "doctor" in actor_lower or "staff" in actor_lower:
                         if not any(w in req_title_lower for w in ["student", "faculty"]):
@@ -262,18 +256,43 @@ class RequirementsAgentPlugin:
   - **ERR-003**: Resource conflict. Target database records are locked or unavailable, returns HTTP 409.""")
             fr_specs_str = "\n\n".join(fr_specs_lines)
 
+            reqs_examples = ctx.request_response_examples if ctx.request_response_examples else f"""### Register Resource (POST `/api/v1/{ctx.normalized_domain}s`)
+- **Request Payload**:
+```json
+{{
+  "name": "Standard Request"
+}}
+```
+- **Response Payload (HTTP 201 Created)**:
+```json
+{{
+  "id": "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+  "status": "active",
+  "created_at": "2026-06-30T00:00:00Z"
+}}
+```"""
+
+            auth_matrix = ctx.authorization_matrix if ctx.authorization_matrix else f"""| Role | View Records | Edit Settings |
+|------|--------------|---------------|
+| {ctx.actors[0] if ctx.actors else 'User'} | Yes | No |
+| {ctx.actors[-1] if ctx.actors else 'Administrator'} | Yes | Yes |"""
+
+            traceability_matrix = ctx.traceability_matrix if ctx.traceability_matrix else f"""| Req ID | Component / Service | Database Table | Verification Method |
+|--------|---------------------|----------------|---------------------|
+| FR-001 | Core API Service | {ctx.database_tables[0] if ctx.database_tables else 'users'} | Unit Test |"""
+
             content = f"""# Functional Requirements
 
 {meta}
 
 ## 1. Document Purpose
-This document specifies the complete functional requirements for the software system:
-"{ctx.project_name}".
+This document specifies the complete functional requirements for the software system: "{ctx.project_name}".
 It establishes the baseline for development, testing, and eventual system acceptance.
 
 ## 2. System Overview
-The system provides a capability-driven backend service implementing core `{ctx.project_name}` workflows. Key capabilities include secure role-based access, relational persistence, domain entity operations, and validation.
-The application utilizes clean architecture to separate the business logic from infrastructure concerns. By decoupling the interfaces, domain models, and storage adapters, the system remains maintainable.
+The `{ctx.project_name}` system provides a capability-driven backend service implementing core `{ctx.project_name}` workflows such as `{", ".join(ctx.workflows[:2])}`. Key capabilities include secure role-based access control, relational database persistence for `{", ".join(ctx.entities[:3])}` entities, and real-time validation checks.
+
+The application utilizes clean architecture to separate `{ctx.normalized_domain}` business logic from infrastructure concerns. By decoupling `{", ".join(ctx.entities[:2])}` domain models, API interfaces, and storage adapters, the system enforces rules like `{ctx.business_rules[0] if ctx.business_rules else "constraints"}`.
 
 ### Core Entities
 The primary domain entities managed by the system are:
@@ -286,7 +305,7 @@ A clear definition of actors establishes the user boundary of the system:
 ## 4. Authorization Matrix
 The following matrix defines resource access permissions:
 
-{ctx.authorization_matrix}
+{auth_matrix}
 
 ## 5. API Endpoint Specifications
 The backend service exposes the following endpoints:
@@ -298,7 +317,7 @@ The backend service exposes the following endpoints:
 ## 6. Request and Response Examples
 These integration contract examples illustrate the expected request body structures and successful responses:
 
-{ctx.request_response_examples}
+{reqs_examples}
 
 ## 7. Functional Requirements Details
 Below are the detailed specifications for each functional requirement:
@@ -318,7 +337,7 @@ The system enforces the following domain rules and constraints:
 ## 10. Traceability Matrix
 This matrix maps functional requirements to verification methods and components:
 
-{ctx.traceability_matrix}
+{traceability_matrix}
 """
         else:
             name = "03_Non_Functional_Requirements.md"
@@ -337,9 +356,8 @@ This matrix maps functional requirements to verification methods and components:
 - **Success Threshold**: The system meets this target consistently under ordinary workloads.
 - **Failure Threshold**: Operations fall outside parameters, triggering automated warnings.
 - **Verification Environment**: Dedicated Staging environment mimicking production configurations.
-- **Monitoring Signal**: Automated Prometheus metrics, performance logs, and audit trail records.""")
+- **Monitoring Signal**: Automated Performance metrics, performance logs, and audit trail records.""")
                 
-                # Make sure there is NO TRUNCATION (...) in the matrix table
                 nfr_matrix_lines.append(f"| {nfr_id} | {cat} | High | Matches the {nfr.lower()} targets | Staging | Automated performance and audit verification tests |")
             
             nfr_specs_str = "\n\n".join(nfr_specs)
@@ -411,25 +429,25 @@ class ArchitectureAgentPlugin:
 {meta}
 
 ## 1. Technical Feasibility
-The technical feasibility evaluates whether the system can be built with existing technologies.
+The technical feasibility evaluates whether the `{ctx.project_name}` can be built with existing relational databases and API services.
 - **Database Indexing**: Relational database indexes optimize queries and ensure fast lookup.
 - **Concurrency & Transactions**: ACID transactions protect entity states and prevent concurrent data conflicts.
 - **Feasibility Details**: {tech_details}
 
 ## 2. Operational Feasibility
-Operational feasibility assesses whether the project will be used effectively.
-- **Self-Service Portals**: Portals improve the user workflow by allowing direct actions (e.g. catalog searches, reservations).
+Operational feasibility assesses whether the `{ctx.project_name}` will be used effectively by the target operators.
+- **Self-Service Portals**: Portals improve the user workflow by allowing direct actions.
 - **Administration**: Administrators can update policies and review logs easily.
 - **Feasibility Details**: {oper_details}
 
 ## 3. Economic Feasibility
-Economic feasibility analyses cost vs. benefit.
+Economic feasibility analyses cost vs. benefit for `{ctx.institution_context}`.
 - **Cost Reduction**: Replaces manual paper ledgers with automated, error-free systems, reducing physical losses.
 - **Software Costs**: Built with open-source technologies (Python, FastAPI, PostgreSQL, Docker).
 - **Feasibility Details**: {econ_details}
 
 ## 4. Schedule Feasibility
-Schedule feasibility evaluates the timeline based on core modules.
+Schedule feasibility evaluates the timeline for building `{", ".join(ctx.modules[:2])}`.
 The project requires building the following modules: {", ".join(ctx.modules)}.
 - **Feasibility Details**: {sched_details}
 
@@ -452,8 +470,8 @@ Below is the evaluation scoring across key parameters:
 - **Feasibility Details**: {legal_details}
 
 ## 7. Resource Feasibility
-- **Personnel**: Fits a single developer with standard Python and database skills.
-- **Infrastructure**: Standard container environment running on host virtual machines.
+- **Personnel**: Fits a single developer to implement the `{ctx.normalized_domain}` schemas and business logic.
+- **Infrastructure**: Standard container environment hosting `{ctx.project_name}` services.
 
 ## 8. Risks and Mitigations
 {risks_str}
@@ -484,9 +502,8 @@ Based on the feasibility scoring of 8.775 / 10 and technical maturity, the recom
 {meta}
 
 ## 1. Architectural Overview
-This document describes the high-level system architecture of:
-"{ctx.project_name}".
-The system is built on a clean, tiered design pattern to isolate routing, business logic, and data persistence. High-throughput ASGI processing handles concurrent connections.
+This document describes the high-level system architecture of: "{ctx.project_name}".
+The `{ctx.project_name}` is built on a clean, tiered design pattern to isolate routing, business logic, and data persistence. High-throughput ASGI processing handles concurrent `{ctx.normalized_domain}` connections.
 
 ## 2. Logical Architecture
 The application is structured into the following layers:
@@ -532,7 +549,7 @@ graph TD
 ```
 
 ## 7. PostgreSQL Schema Design & Database Indexing Notes
-The database schema consists of the following relational tables:
+The database schema consists of the following relational tables to persist `{ctx.entities[0].lower() if ctx.entities else "domain"}` records and manage operational flows:
 
 ```sql
 {ddl_str}
@@ -547,12 +564,12 @@ To optimize query performance:
 
 ### ADR-01: FastAPI Framework Selection
 - **Status**: Accepted
-- **Context**: The application requires highly performant async API processing.
+- **Context**: The `{ctx.project_name}` application requires highly performant async API processing to handle concurrent request bursts from users.
 - **Decision**: Selected FastAPI due to Pydantic integration, automatic OpenAPI, and speed.
 
 ### ADR-02: PostgreSQL for Relational Durability
 - **Status**: Accepted
-- **Context**: Relational data integrity is critical for transactions.
+- **Context**: Relational data integrity is critical for `{ctx.normalized_domain}` transaction history records.
 - **Decision**: Selected PostgreSQL to guarantee consistency.
 
 ## 9. Security Threat Model Summary
@@ -566,7 +583,7 @@ To ensure the system's resilience, we model key threats and mitigations:
             meta = get_metadata_header(ctx.project_name, "06_Technology_Stack")
 
             # Stack justification
-            justification = get_stack_rationale(ctx.normalized_domain)
+            justification = get_stack_rationale(ctx)
 
             content = f"""# Technology Stack
 
@@ -600,12 +617,12 @@ The system relies on the following target component versions:
 
 ## 3. Rationale for Stack Choices
 {justification}
+
 This collection of technologies forms an industry-standard modern stack for enterprise APIs. The components are chosen for their high performance, strong type-safety features, active community support, and ease of deployment.
 
 ## 4. Stack Maintenance and Security Scanning
-To keep the technology stack secure and modern, we will execute automated dependency
-vulnerability scanning weekly. Standard tools like `pip-audit` or `safety` will run inside the
-CI pipeline to verify no known CVEs exist in installed packages.
+To keep the technology stack secure and modern, we will execute automated dependency vulnerability scanning weekly. Standard tools like `pip-audit` or `safety` will run inside the CI pipeline to verify no known CVEs exist in installed packages.
+
 Additionally, dependabot or similar automated dependency update tools will be configured to regularly check for security patches.
 
 ## 5. Alternatives Considered and Decision Rationale
@@ -613,6 +630,7 @@ Additionally, dependabot or similar automated dependency update tools will be co
 - **Alternative 2: SQLite**: Discarded as it is not suited for high concurrency or distributed multi-replica container environments.
 - **Alternative 3: MongoDB**: Discarded since relational integrity, strict foreign key constraints, and join logic are required.
 """
+
         return AgentResult(
             status=AgentExecutionStatus.SUCCESS,
             summary=f"Generated architecture artifact: {name}.",
@@ -711,30 +729,25 @@ class OperationsAgentPlugin:
             meta = get_metadata_header(ctx.project_name, "08_Testing_Strategy")
 
             # Dynamic test cases
-            test_cases_str = get_test_cases(ctx.normalized_domain)
+            test_cases_str = get_test_cases(ctx)
 
             content = f"""# Testing Strategy
 
 {meta}
 
 ## 1. Test Strategy Overview
-This document specifies the testing strategy for the project:
-"{ctx.project_name}".
-To guarantee code quality and prevent regression errors, the project implements a
-multi-tiered testing framework encompassing unit tests, integration tests, and API contract
-verification tests.
+This document specifies the testing strategy for the project: "{ctx.project_name}".
+To guarantee code quality and prevent regression errors, the project implements a multi-tiered testing framework encompassing unit tests, integration tests, and API contract verification tests.
 
 ## 2. Testing Levels
 
 ### Unit Testing
-Unit tests verify the behavior of small modules in isolation. They mock all external
-dependencies (like databases or third-party APIs).
+Unit tests verify the behavior of small modules in isolation. They mock all external dependencies (like databases or third-party APIs).
 - **Tool**: pytest
 - **Focus**: Pydantic validations, utility helpers, exception translations.
 
 ### Integration Testing
-Integration tests verify how modules interact, particularly the interaction between database
-services and repository layers.
+Integration tests verify how modules interact, particularly the interaction between database services and repository layers.
 - **Tool**: pytest with a real temporary PostgreSQL test database.
 - **Focus**: Database transactions, relational constraints, ORM mappings.
 
@@ -749,8 +762,7 @@ API testing checks the correctness of endpoints, security headers, and response 
 
 ## 4. Coverage Targets
 The target coverage is set to a minimum of 90% across the codebase.
-The continuous integration pipeline will automatically fail if the coverage drops below
-this threshold. Code coverage reports are generated automatically using `pytest-cov`.
+The continuous integration pipeline will automatically fail if the coverage drops below this threshold. Code coverage reports are generated automatically using `pytest-cov`.
 """
         elif "deployment-planning" in caps:
             name = "09_Deployment_Plan.md"
@@ -824,10 +836,8 @@ If a deployment fails, the following rollback steps must be executed:
 {meta}
 
 ## 1. Project Risk Management
-This document identifies potential security, reliability, and delivery risks for:
-"{ctx.project_name}".
-We establish mitigation actions and contingency plans for all major risks to ensure successful
-system development and operations.
+This document identifies potential security, reliability, and delivery risks for: "{ctx.project_name}".
+We establish mitigation actions and contingency plans for all major risks to ensure successful system development and operations.
 
 ## 2. Risk Matrix Table
 
@@ -837,17 +847,14 @@ system development and operations.
 
 ## 3. Security Risk Management
 We mandate regular security scans for third-party libraries and code quality tools.
-JWT validation secrets must never be committed to source control and must be loaded
-from environment variables. Relational databases must reside in private networks.
-Furthermore, access logs and database audit logs will be inspected on a weekly basis
-to detect unauthorized access patterns or injection attempts early.
+JWT validation secrets must never be committed to source control and must be loaded from environment variables. Relational databases must reside in private networks.
+
+Furthermore, access logs and database audit logs will be inspected on a weekly basis to detect unauthorized access patterns or injection attempts early.
 
 ## 4. Risk Monitoring and Review
-The risk assessment matrix is not a static document. It will be reviewed at the start
-of every development sprint. Any new dependencies, infrastructure modifications, or
-regulatory compliance shifts will trigger an update to this document.
-This keeps our threat model and mitigations fully aligned with the active environment.
-We will assign ownership for each risk item to ensure active monitoring.
+The risk assessment matrix is not a static document. It will be reviewed at the start of every development sprint. Any new dependencies, infrastructure modifications, or regulatory compliance shifts will trigger an update to this document.
+
+This keeps our threat model and mitigations fully aligned with the active environment. We will assign ownership for each risk item to ensure active monitoring.
 """
 
         return AgentResult(
@@ -890,70 +897,60 @@ def get_table_ddl(table: str) -> str:
         "suppliers": "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    email VARCHAR(100)",
         "library_policies": "    id UUID PRIMARY KEY,\n    policy_name VARCHAR(100) UNIQUE NOT NULL,\n    value VARCHAR(255) NOT NULL",
         "audit_logs": "    id UUID PRIMARY KEY,\n    user_id UUID REFERENCES users(id),\n    action VARCHAR(255) NOT NULL,\n    details TEXT",
+        # School Management Tables
+        "classes": "    id UUID PRIMARY KEY,\n    name VARCHAR(50) NOT NULL,\n    grade_level VARCHAR(20) NOT NULL",
+        "students": "    id UUID PRIMARY KEY,\n    user_id UUID REFERENCES users(id),\n    roll_number VARCHAR(20) UNIQUE NOT NULL",
+        "teachers": "    id UUID PRIMARY KEY,\n    user_id UUID REFERENCES users(id),\n    department VARCHAR(100)",
+        "subjects": "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    code VARCHAR(20) UNIQUE NOT NULL",
+        "attendance": "    id UUID PRIMARY KEY,\n    student_id UUID REFERENCES students(id),\n    class_id UUID REFERENCES classes(id),\n    date DATE NOT NULL,\n    status VARCHAR(20) NOT NULL",
+        "exams": "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    date DATE NOT NULL",
+        "marks": "    id UUID PRIMARY KEY,\n    student_id UUID REFERENCES students(id),\n    exam_id UUID REFERENCES exams(id),\n    score DECIMAL(5,2) NOT NULL",
+        "fee_invoices": "    id UUID PRIMARY KEY,\n    student_id UUID REFERENCES students(id),\n    amount DECIMAL(10,2) NOT NULL,\n    due_date DATE NOT NULL,\n    status VARCHAR(20) NOT NULL",
+        "timetables": "    id UUID PRIMARY KEY,\n    class_id UUID REFERENCES classes(id),\n    subject_id UUID REFERENCES subjects(id),\n    day_of_week VARCHAR(15) NOT NULL,\n    start_time TIME NOT NULL",
+        "report_cards": "    id UUID PRIMARY KEY,\n    student_id UUID REFERENCES students(id),\n    term VARCHAR(50) NOT NULL,\n    gpa DECIMAL(3,2)",
     }
     f_str = fields.get(table, "    id UUID PRIMARY KEY,\n    name VARCHAR(100) NOT NULL")
     return f"CREATE TABLE {table} (\n{f_str},\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP\n);"
 
 
-def get_stack_rationale(domain: str) -> str:
+def get_stack_rationale(domain_ctx: DomainContext) -> str:
     """Return domain stack rationale justification."""
-    if domain == "library-management":
-        return "FastAPI provides instant OpenAPI documentation, making it easy to build Catalog search endpoints. PostgreSQL ensures ACID transactions for book copy checkout (loans) and reservation status updates, preventing double issuing of the same physical copy."
-    if domain == "ecommerce":
-        return "FastAPI uses modern ASGI concurrency to support thousands of customers browsing and checking out simultaneously. PostgreSQL handles critical payment and order state transaction safety with high integrity."
-    if domain == "hospital-management":
-        return "FastAPI supports secure token authentication for patient record endpoints. PostgreSQL supports relational schema complexity for patient histories, appointments, and bills, with encryption compatibility for HIPAA compliance."
-    return "FastAPI is lightweight with high performance for web APIs. PostgreSQL is a mature relational database ensuring ACID transactional safety and relational durability."
+    return f"FastAPI provides instant OpenAPI documentation, making it easy to build {domain_ctx.project_name} search and command endpoints. PostgreSQL handles critical {domain_ctx.normalized_domain} transaction safety (such as {domain_ctx.workflows[0] if domain_ctx.workflows else 'operational transactions'}) with high integrity and relational consistency, satisfying rules like '{domain_ctx.business_rules[0] if domain_ctx.business_rules else 'data validation constraints'}'."
 
 
-def get_test_cases(domain: str) -> str:
+def get_test_cases(domain_ctx: DomainContext) -> str:
     """Return tailored test cases for the domain."""
-    if domain == "library-management":
-        return """### TC-CIRC-001: Librarian can issue available book copy
-- **Input**: `{ "member_id": "member-uuid", "book_copy_id": "copy-uuid" }`
-- **Expected Outcome**: Return HTTP 201 Created. Loan status set to issued.
-
-### TC-CIRC-002: Unavailable book copy cannot be issued
-- **Input**: `{ "member_id": "member-uuid", "book_copy_id": "copy-uuid-already-loaned" }`
-- **Expected Outcome**: Return HTTP 400 Bad Request due to copy status conflict.
-
-### TC-FINE-001: Overdue fine is calculated correctly
-- **Input**: Trigger daily fine calculation routine for overdue loan record.
-- **Expected Outcome**: Overdue fine record generated matching configured rate * days.
-
-### TC-RES-001: Reserved book copy cannot be issued to other members
-- **Input**: Member B tries to borrow copy currently reserved by Member A.
-- **Expected Outcome**: Return HTTP 403 Forbidden due to reservation conflict.
-
-### TC-MEMB-001: Student can search catalog
-- **Input**: Query catalog by title or ISBN.
-- **Expected Outcome**: Return list of matching books with availability status.
-
-### TC-CIRC-003: Student cannot issue a book directly without librarian approval
-- **Input**: Student tries to POST loan directly.
-- **Expected Outcome**: Return HTTP 403 Forbidden.
-
-### TC-REP-001: Admin can generate reports
-- **Input**: Request overdue and inventory report compilation.
-- **Expected Outcome**: Return formatted reports successfully."""
-    
-    if domain == "ecommerce":
-        return """### TC-ORD-001: Customer checkout creates order
-- **Input**: `{ "cart_id": "cart-uuid" }`
-- **Expected Outcome**: Order created, stock reserved, transaction marked pending payment.
-
-### TC-PAY-001: Payment transaction processing
-- **Input**: Pay for order using payment gateway payload.
-- **Expected Outcome**: Status set to paid, invoice issued.
-
-### TC-INV-001: Restock trigger on low stock
-- **Input**: Reduce inventory below minimum threshold.
-- **Expected Outcome**: System triggers inventory alert email."""
+    tcs = []
+    # Test Case 1: Workflow-based
+    if len(domain_ctx.workflows) > 0:
+        flow1 = domain_ctx.workflows[0]
+        tcs.append(f"""### TC-WORKFLOW-001: Execute {flow1}
+- **Input**: Valid payload containing {", ".join(domain_ctx.entities[:2]) if domain_ctx.entities else "request"} parameters.
+- **Expected Outcome**: Return HTTP 201 Created and update state records in database.""")
         
-    return """### TC-AUTH-001: Register New User
-- **Input**: User registration parameters.
-- **Expected Outcome**: Return HTTP 201 Created.
+    if len(domain_ctx.workflows) > 1:
+        flow2 = domain_ctx.workflows[1]
+        tcs.append(f"""### TC-WORKFLOW-002: Reject invalid {flow2}
+- **Input**: Missing or malformed inputs for {domain_ctx.entities[0] if domain_ctx.entities else "parameters"}.
+- **Expected Outcome**: Return HTTP 422 Unprocessable Entity due to validation failure.""")
 
-### TC-AUTH-002: Login with Incorrect Password
-- **Input**: Bad password payload.
-- **Expected Outcome**: Return HTTP 401 Unauthorized."""
+    # Test Case 2: Business Rule-based
+    if len(domain_ctx.business_rules) > 0:
+        rule = domain_ctx.business_rules[0]
+        tcs.append(f"""### TC-RULE-001: Enforce rule - {rule}
+- **Input**: Request that violates the rule configuration constraints.
+- **Expected Outcome**: Reject request and return HTTP 403 Forbidden or HTTP 400 Bad Request.""")
+
+    # Test Case 3: Actor-based
+    if len(domain_ctx.actors) > 0:
+        actor = domain_ctx.actors[0]
+        tcs.append(f"""### TC-SEC-001: Role-based access control for {actor}
+- **Input**: Unauthorized client attempts action designated for {actor} role.
+- **Expected Outcome**: Return HTTP 403 Forbidden and log security alert.""")
+
+    if not tcs:
+        tcs.append("""### TC-AUTH-001: Register New User
+- **Input**: User registration credentials.
+- **Expected Outcome**: Return HTTP 201 Created.""")
+
+    return "\n\n".join(tcs)

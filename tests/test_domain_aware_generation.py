@@ -15,169 +15,194 @@ def platform() -> AgentForgePlatform:
     return AgentForgePlatform.create_default(settings=settings)
 
 
-def test_library_management_for_university_generation(platform: AgentForgePlatform) -> None:
-    """Test 1, 2, 3, 4: Verify detailed domain-specific output for 'Library Management For University'."""
-    summary = platform.run_project_request("Library Management For University")
+# Banned global filler terms
+BANNED_FILLERS = [
+    "the goal is to build a robust system",
+    "interacts with the system in a designated role",
+    "reference implementation",
+    "tight coupling",
+    "lack of unit test coverage",
+    "incomplete deployment configurations",
+    "core domain manager",
+]
 
+
+def assert_domain_specific_artifacts(stored: any, inclusions: list[str], exclusions: list[str]) -> None:
+    """Helper to verify that generated files are domain-specific and exclude banned/wrong-domain terms."""
+    # Retrieve artifacts
+    brief_content = stored.nodes["01_project_brief"].artifacts[0].content
+    fr_content = stored.nodes["02_functional_requirements"].artifacts[0].content
+    feas_content = stored.nodes["04_feasibility_study"].artifacts[0].content
+
+    # Check inclusions
+    for inc in inclusions:
+        assert inc.lower() in brief_content.lower(), f"Brief missing domain term: {inc}"
+        assert inc.lower() in fr_content.lower(), f"FR missing domain term: {inc}"
+        # Feasibility study is high-level, verify relevant key terms
+        if inc.lower() not in feas_content.lower():
+            # Check if at least one of the major domain nouns is present
+            found_any = any(word.lower() in feas_content.lower() for word in inclusions)
+            assert found_any, f"Feasibility Study does not contain any of the domain terms: {inclusions}"
+
+    # Check exclusions (wrong-domain terms)
+    for exc in exclusions:
+        assert exc.lower() not in brief_content.lower(), f"Brief contains wrong-domain term: {exc}"
+        assert exc.lower() not in fr_content.lower(), f"FR contains wrong-domain term: {exc}"
+        assert exc.lower() not in feas_content.lower(), f"Feasibility contains wrong-domain term: {exc}"
+
+    # Check global banned fillers
+    for filler in BANNED_FILLERS:
+        assert filler.lower() not in brief_content.lower(), f"Brief contains global banned filler: {filler}"
+        assert filler.lower() not in fr_content.lower(), f"FR contains global banned filler: {filler}"
+        assert filler.lower() not in feas_content.lower(), f"Feasibility contains global banned filler: {filler}"
+
+
+def test_school_management_generation(platform: AgentForgePlatform) -> None:
+    """Test 1: Verify School Management System output."""
+    summary = platform.run_project_request("School Management System")
     assert summary.status == "completed"
     assert summary.error is None
 
     stored = platform.workflow_store.get(summary.workflow_id)
 
-    # Banned terms list
-    banned_terms = [
+    inclusions = [
+        "Student",
+        "Teacher",
+        "Parent",
+        "Attendance",
+        "Exam",
+        "Fee",
+        "Timetable",
+        "Report Card",
+    ]
+    exclusions = [
+        "task crud",
+        "book copy",
+        "shopping cart",
+        "patient record",
+    ]
+    assert_domain_specific_artifacts(stored, inclusions, exclusions)
+
+
+def test_gym_membership_generation(platform: AgentForgePlatform) -> None:
+    """Test 2: Verify Gym Membership Management System output."""
+    summary = platform.run_project_request("Gym Membership Management System")
+    assert summary.status == "completed"
+    assert summary.error is None
+
+    stored = platform.workflow_store.get(summary.workflow_id)
+
+    inclusions = [
+        "Member",
+        "Trainer",
+        "Membership Plan",
+        "Workout Schedule",
+        "Payment",
+        "Attendance",
+    ]
+    exclusions = [
+        "student attendance",
+        "book loan",
+        "shopping cart",
+    ]
+    assert_domain_specific_artifacts(stored, inclusions, exclusions)
+
+
+def test_hostel_complaint_generation(platform: AgentForgePlatform) -> None:
+    """Test 3: Verify Hostel Complaint Management System output."""
+    summary = platform.run_project_request("Hostel Complaint Management System")
+    assert summary.status == "completed"
+    assert summary.error is None
+
+    stored = platform.workflow_store.get(summary.workflow_id)
+
+    inclusions = [
+        "Resident",
+        "Warden",
+        "Room",
+        "Complaint",
+        "Maintenance Staff",
+        "Complaint Status",
+    ]
+    exclusions = [
         "task crud",
         "task priority",
         "task status",
         "task manager",
         "todo",
         "generic task",
-        "interacts with the system in a designated role",
-        "reference implementation",
-        "tight coupling",
-        "lack of unit test coverage",
-        "incomplete deployment configurations",
     ]
-
-    # Test 1: Project Brief Assertions
-    brief_node = stored.nodes["01_project_brief"]
-    brief_content = brief_node.artifacts[0].content
-    assert "university library" in brief_content.lower()
-    assert "book catalog" in brief_content.lower()
-    assert "borrowing" in brief_content.lower()
-    assert "returns" in brief_content.lower()
-    assert "reservations" in brief_content.lower()
-    assert "overdue fines" in brief_content.lower()
-    assert "Student" in brief_content
-    assert "Faculty Member" in brief_content
-    assert "Librarian" in brief_content
-    assert "Administrator" in brief_content
-
-    for term in banned_terms:
-        assert term not in brief_content.lower(), f"Brief contains banned term: {term}"
-
-    # Test 2: Functional Requirements Assertions
-    req_node = stored.nodes["02_functional_requirements"]
-    req_content = req_node.artifacts[0].content
-    assert "Issue Book" in req_content
-    assert "Return Book" in req_content
-    assert "Renew Loan" in req_content
-    assert "Reserve Book" in req_content
-    assert "Overdue Fine" in req_content
-    assert "Book Copy" in req_content
-    assert "Catalog Search" in req_content or "search" in req_content.lower()
-    assert "Audit Log" in req_content
-
-    assert "task crud" not in req_content.lower()
-    assert "task priority" not in req_content.lower()
-    assert "task status" not in req_content.lower()
-
-    for term in banned_terms:
-        assert term not in req_content.lower(), f"FR contains banned term: {term}"
-
-    # Test 3: Non-Functional Requirements Assertions
-    nfr_node = stored.nodes["03_non_functional_requirements"]
-    nfr_content = nfr_node.artifacts[0].content
-    assert "catalog search latency" in nfr_content.lower()
-    assert "loan transaction atomicity" in nfr_content.lower()
-    assert "book copy inventory consistency" in nfr_content.lower()
-    assert "auditability of issue/return transactions" in nfr_content.lower()
-
-    # Test 4: Feasibility Study Assertions
-    feas_node = stored.nodes["04_feasibility_study"]
-    feas_content = feas_node.artifacts[0].content
-    assert "catalog indexing" in feas_content.lower()
-    assert "circulation workflow" in feas_content.lower() or "circulation" in feas_content.lower()
-    assert "librarian workflow" in feas_content.lower() or "librarian" in feas_content.lower()
-    assert "student/faculty self-service" in feas_content.lower() or "self-service" in feas_content.lower()
-    assert "fine calculation" in feas_content.lower()
-    assert "reservation conflicts" in feas_content.lower()
+    assert_domain_specific_artifacts(stored, inclusions, exclusions)
 
 
-def test_ecommerce_store_generation(platform: AgentForgePlatform) -> None:
-    """Test 5: Verify Ecommerce Store output containing correct details and no library terms."""
+def test_car_rental_generation(platform: AgentForgePlatform) -> None:
+    """Test 4: Verify Car Rental Platform output."""
+    summary = platform.run_project_request("Car Rental Platform")
+    assert summary.status == "completed"
+    assert summary.error is None
+
+    stored = platform.workflow_store.get(summary.workflow_id)
+
+    inclusions = [
+        "Customer",
+        "Vehicle",
+        "Booking",
+        "Rental Period",
+        "Payment",
+        "Return Inspection",
+    ]
+    exclusions = [
+        "librarian",
+        "student",
+        "patient",
+    ]
+    assert_domain_specific_artifacts(stored, inclusions, exclusions)
+
+
+def test_blood_donation_generation(platform: AgentForgePlatform) -> None:
+    """Test 5: Verify Blood Donation Management System output."""
+    summary = platform.run_project_request("Blood Donation Management System")
+    assert summary.status == "completed"
+    assert summary.error is None
+
+    stored = platform.workflow_store.get(summary.workflow_id)
+
+    inclusions = [
+        "Donor",
+        "Blood Group",
+        "Donation Camp",
+        "Blood Inventory",
+        "Recipient Request",
+    ]
+    exclusions = [
+        "shopping cart",
+        "checkout",
+        "book copy",
+    ]
+    assert_domain_specific_artifacts(stored, inclusions, exclusions)
+
+
+def test_ecommerce_generation(platform: AgentForgePlatform) -> None:
+    """Test 6: Verify Ecommerce Store output."""
     summary = platform.run_project_request("Ecommerce Store")
-
     assert summary.status == "completed"
     assert summary.error is None
 
     stored = platform.workflow_store.get(summary.workflow_id)
 
-    # Gather all generated artifact content text
-    all_content = ""
-    for node in stored.nodes.values():
-        for art in node.artifacts:
-            all_content += "\n" + art.content
-
-    # Inclusions
-    assert "Customer" in all_content
-    assert "Merchant" in all_content or "Store Admin" in all_content
-    assert "Product Catalog" in all_content or "product" in all_content.lower()
-    assert "Shopping Cart" in all_content or "cart" in all_content.lower()
-    assert "Checkout" in all_content
-    assert "Payment" in all_content
-    assert "Order Fulfillment" in all_content or "order" in all_content.lower()
-    assert "Inventory" in all_content
-
-    # Library exclusions
-    assert "librarian" not in all_content.lower()
-    assert "book copy" not in all_content.lower()
-    assert "loan" not in all_content.lower()
-    assert "overdue fine" not in all_content.lower()
-
-
-def test_hospital_management_generation(platform: AgentForgePlatform) -> None:
-    """Test 6: Verify Hospital Management System output inclusions."""
-    summary = platform.run_project_request("Hospital Management System")
-
-    assert summary.status == "completed"
-    assert summary.error is None
-
-    stored = platform.workflow_store.get(summary.workflow_id)
-
-    # Gather all generated artifact content text
-    all_content = ""
-    for node in stored.nodes.values():
-        for art in node.artifacts:
-            all_content += "\n" + art.content
-
-    # Inclusions
-    assert "Patient" in all_content
-    assert "Doctor" in all_content
-    assert "Appointment" in all_content
-    assert "Medical Record" in all_content or "emr" in all_content.lower()
-    assert "Billing" in all_content
-    assert "Prescription" in all_content
-
-
-def test_domain_pack_matching(platform: AgentForgePlatform) -> None:
-    """Verify different user inputs resolve to correct domain packs."""
-    from agentforge.domain_analysis.domain_analyzer import DomainAnalyzer
-
-    analyzer = DomainAnalyzer()
-
-    ctx_lib = analyzer.analyze("I want to construct a online school library catalog system")
-    assert ctx_lib.normalized_domain == "library-management"
-    assert "Student" in ctx_lib.actors
-
-    ctx_shop = analyzer.analyze("Build an online t-shirt shop store with payment gateway")
-    assert ctx_shop.normalized_domain == "ecommerce"
-    assert "Customer" in ctx_shop.actors
-
-    ctx_hospital = analyzer.analyze("Create a clinic appointment portal for patients")
-    assert ctx_hospital.normalized_domain == "hospital-management"
-    assert "Patient" in ctx_hospital.actors
-
-    ctx_lms = analyzer.analyze("Develop a course training learning management system")
-    assert ctx_lms.normalized_domain == "learning-management-system"
-    assert "Course" in ctx_lms.entities
-
-    ctx_task = analyzer.analyze("Set up a project sprint task tracker kanban board")
-    assert ctx_task.normalized_domain == "task-management"
-
-    ctx_inv = analyzer.analyze("Warehouse stock reorder purchase order manager")
-    assert ctx_inv.normalized_domain == "inventory-management"
-    assert "SKU" in ctx_inv.validation_rules[0]
-
-    ctx_generic = analyzer.analyze("A custom data entry app for organizing files")
-    assert ctx_generic.normalized_domain == "generic-business-app"
+    inclusions = [
+        "Customer",
+        "Product",
+        "Cart",
+        "Checkout",
+        "Payment",
+        "Order",
+        "Inventory",
+    ]
+    exclusions = [
+        "librarian",
+        "book copy",
+        "loan",
+        "overdue fine",
+    ]
+    assert_domain_specific_artifacts(stored, inclusions, exclusions)

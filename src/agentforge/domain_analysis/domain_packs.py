@@ -7,6 +7,7 @@ meaningful actors, entities, modules, and database structures.
 from __future__ import annotations
 
 from agentforge.domain_analysis.domain_context import DomainContext
+from agentforge.domain_analysis.new_packs import NEW_PACKS
 
 DOMAIN_PACKS: dict[str, DomainContext] = {
     "library-management": DomainContext(
@@ -1244,3 +1245,7 @@ DOMAIN_PACKS: dict[str, DomainContext] = {
 | FR-006 | Audit Service | audit_logs | Unit Test |""",
     ),
 }
+
+DOMAIN_PACKS.update(NEW_PACKS)
+
+
