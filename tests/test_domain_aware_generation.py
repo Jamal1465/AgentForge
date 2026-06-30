@@ -25,7 +25,15 @@ def test_domain_aware_library_system_generation(platform: AgentForgePlatform) ->
     # Retrieve stored workflow graph to inspect nodes
     stored = platform.workflow_store.get(summary.workflow_id)
 
-    # Assert 02_functional_requirements content
+    # 1. Assert Project Brief target users / actors
+    brief_node = stored.nodes["01_project_brief"]
+    brief_content = brief_node.artifacts[0].content
+    assert "Student" in brief_content
+    assert "Faculty" in brief_content
+    assert "Librarian" in brief_content
+    assert "Administrator" in brief_content
+
+    # 2. Assert 02_functional_requirements content
     req_node = stored.nodes["02_functional_requirements"]
     assert len(req_node.artifacts) == 1
     req_content = req_node.artifacts[0].content
@@ -41,12 +49,19 @@ def test_domain_aware_library_system_generation(platform: AgentForgePlatform) ->
     assert "Reservation" in req_content
     assert "Fine" in req_content
 
-    # Assert task-manager vocabulary is removed or not used generically
-    assert "Task CRUD" not in req_content
-    assert "task priority" not in req_content.lower()
-    assert "task status" not in req_content.lower()
+    # Assert wrong-domain words are not present
+    wrong_words = [
+        "task crud",
+        "task priority",
+        "task status",
+        "task manager",
+        "todo",
+        "generic task",
+    ]
+    for word in wrong_words:
+        assert word not in req_content.lower()
 
-    # Assert 05_system_architecture content
+    # 3. Assert 05_system_architecture content
     arch_node = stored.nodes["05_system_architecture"]
     assert len(arch_node.artifacts) == 1
     arch_content = arch_node.artifacts[0].content
@@ -62,6 +77,66 @@ def test_domain_aware_library_system_generation(platform: AgentForgePlatform) ->
     assert "loans" in arch_content.lower()
     assert "reservations" in arch_content.lower()
     assert "fines" in arch_content.lower()
+
+
+def test_domain_aware_ecommerce_generation(platform: AgentForgePlatform) -> None:
+    """Test that an Ecommerce Store input generates domain-appropriate docs."""
+    summary = platform.run_project_request("Ecommerce Store")
+
+    assert summary.status == "completed"
+    assert summary.error is None
+
+    # Retrieve stored workflow graph to inspect nodes
+    stored = platform.workflow_store.get(summary.workflow_id)
+
+    # 1. Assert Project Brief target users / actors
+    brief_node = stored.nodes["01_project_brief"]
+    brief_content = brief_node.artifacts[0].content
+    assert "Customer" in brief_content
+    assert "Merchant" in brief_content
+
+    # 2. Assert 02_functional_requirements content
+    req_node = stored.nodes["02_functional_requirements"]
+    assert len(req_node.artifacts) == 1
+    req_content = req_node.artifacts[0].content
+
+    # Assert correct domain-specific inclusions
+    assert "Customer" in req_content
+    assert "Merchant" in req_content
+    assert "Product" in req_content
+    assert "Cart" in req_content
+    assert "Checkout" in req_content
+    assert "Payment" in req_content
+    assert "Order" in req_content
+    assert "Inventory" in req_content
+
+    # Assert wrong-domain words are not present
+    wrong_words = [
+        "task crud",
+        "task priority",
+        "task status",
+        "task manager",
+        "todo",
+        "generic task",
+    ]
+    for word in wrong_words:
+        assert word not in req_content.lower()
+
+    # 3. Assert 05_system_architecture content
+    arch_node = stored.nodes["05_system_architecture"]
+    assert len(arch_node.artifacts) == 1
+    arch_content = arch_node.artifacts[0].content
+
+    assert "Product" in arch_content
+    assert "Cart" in arch_content
+    assert "Order" in arch_content
+    assert "Payment" in arch_content
+
+    # Assert SQL database tables
+    assert "products" in arch_content.lower()
+    assert "orders" in arch_content.lower()
+    assert "payments" in arch_content.lower()
+    assert "carts" in arch_content.lower()
 
 
 def test_domain_pack_matching(platform: AgentForgePlatform) -> None:
