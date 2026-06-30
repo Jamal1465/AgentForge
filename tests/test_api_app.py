@@ -90,3 +90,31 @@ def test_fastapi_plugins_capabilities_events(test_client: TestClient) -> None:
     assert response.status_code == 200
     events_data = response.json()
     assert "events" in events_data
+
+
+def test_fastapi_list_workflows(test_client: TestClient) -> None:
+    # First, generate a project to ensure we have a workflow in memory/disk
+    response_create = test_client.post(
+        "/api/workflows/create",
+        json={"description": "Build a secure FastAPI task manager"},
+    )
+    assert response_create.status_code == 200
+    created_data = response_create.json()
+    workflow_id = created_data["workflow_id"]
+
+    # Test GET /projects
+    response_list1 = test_client.get("/projects")
+    assert response_list1.status_code == 200
+    list1_data = response_list1.json()
+    assert "projects" in list1_data
+    assert len(list1_data["projects"]) > 0
+    assert any(p["workflow_id"] == workflow_id for p in list1_data["projects"])
+
+    # Test GET /api/workflows
+    response_list2 = test_client.get("/api/workflows")
+    assert response_list2.status_code == 200
+    list2_data = response_list2.json()
+    assert "projects" in list2_data
+    assert len(list2_data["projects"]) > 0
+    assert any(p["workflow_id"] == workflow_id for p in list2_data["projects"])
+

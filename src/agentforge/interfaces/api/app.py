@@ -20,6 +20,7 @@ from agentforge.interfaces.api.handlers import (
     list_capabilities_handler,
     list_events_handler,
     list_plugins_handler,
+    list_projects_handler,
     readiness_handler,
 )
 from agentforge.interfaces.api.schemas import ApiValidationError
@@ -123,6 +124,14 @@ def create_app(platform: AgentForgePlatform | None = None) -> Any:
     @app.get("/api/events")
     def api_list_events(workflow_id: str | None = None) -> dict[str, object]:
         return list_events_handler(active_platform, workflow_id=workflow_id)
+
+    @app.get("/projects")
+    def list_projects() -> dict[str, object]:
+        return list_projects_handler(active_platform)
+
+    @app.get("/api/workflows")
+    def api_list_workflows() -> dict[str, object]:
+        return list_projects_handler(active_platform)
 
     return app
 

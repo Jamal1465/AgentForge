@@ -260,3 +260,96 @@ def list_events_handler(
         "events": serialized,
     }
 
+
+def list_projects_handler(platform: AgentForgePlatform) -> dict[str, object]:
+    """List all generated projects/workflows."""
+    import os
+    import re
+    from datetime import UTC, datetime
+    from typing import Any
+
+    projects: list[dict[str, Any]] = []
+    seen_ids = set()
+
+    # 1. Scan the generated_projects folder on disk
+    output_base_dir = "generated_projects"
+    if os.path.isdir(output_base_dir):
+        for workflow_id in os.listdir(output_base_dir):
+            output_dir = os.path.join(output_base_dir, workflow_id)
+            if not os.path.isdir(output_dir):
+                continue
+
+            seen_ids.add(workflow_id)
+            project_name = "Generated Project"
+            mtime_float = os.path.getmtime(output_dir)
+
+            # Try to read the actual project name from 01_Project_Brief.md
+            brief_path = os.path.join(output_dir, "01_Project_Brief.md")
+            if os.path.isfile(brief_path):
+                try:
+                    mtime_float = os.path.getmtime(brief_path)
+                    with open(brief_path, encoding="utf-8") as f:
+                        for line in f:
+                            if "project name:" in line.lower():
+                                parts = line.split(":", 1)
+                                if len(parts) > 1:
+                                    project_name = parts[1].strip()
+                                    project_name = re.sub(r'[*`#_]', '', project_name)
+                                    break
+                except Exception:
+                    pass
+
+            # Gather generated files
+            files = []
+            for name in sorted(os.listdir(output_dir)):
+                if name.endswith(".md"):
+                    file_path = os.path.join(output_dir, name)
+                    files.append({
+                        "name": name,
+                        "size_bytes": os.path.getsize(file_path),
+                    })
+
+            # Check if workflow exists in memory to get correct status
+            status = "completed"
+            try:
+                workflow = platform.workflow_store.get(workflow_id)
+                events = workflow.events
+                is_completed = any(e.event_type == "workflow.completed" for e in events)
+                status = "completed" if is_completed else "running"
+            except Exception:
+                pass
+
+            iso_timestamp = datetime.fromtimestamp(mtime_float, tz=UTC).isoformat()
+            projects.append({
+                "workflow_id": workflow_id,
+                "project_name": project_name,
+                "status": status,
+                "files": files,
+                "timestamp": iso_timestamp,
+            })
+
+    # 2. Also check any running workflows in memory that might not have files yet
+    if hasattr(platform.workflow_store, "_workflows"):
+        for workflow_id, workflow in platform.workflow_store._workflows.items():
+            if workflow_id in seen_ids:
+                continue
+
+            project_name = "Generated Project"
+            events = workflow.events
+            is_completed = any(e.event_type == "workflow.completed" for e in events)
+            status = "completed" if is_completed else "running"
+            now_iso = datetime.now(tz=UTC).isoformat()
+
+            projects.append({
+                "workflow_id": workflow_id,
+                "project_name": project_name,
+                "status": status,
+                "files": [],
+                "timestamp": now_iso,
+            })
+
+    projects.sort(key=lambda x: str(x["timestamp"]), reverse=True)
+    return {"projects": projects}
+
+
+
